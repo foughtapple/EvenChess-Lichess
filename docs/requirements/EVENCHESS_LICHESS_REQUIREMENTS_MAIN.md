@@ -185,3 +185,11 @@ Stage 1 phases:
 ## 11. Codex completion report
 
 At the end of every implementation phase Codex must report: phase, scope, files changed, upstream files touched, patch map entries, tests, invariant checks, normal chess regression, EvenChess regression, unresolved items, risks, and whether the next phase is safe.
+
+## Markdown-only requirements policy
+
+The live EvenChess-Lichess requirements source is Markdown.
+
+Only `.md` files under `docs/requirements` are authoritative for Codex implementation work. `.docx` copies were removed to prevent duplicate maintenance and requirement drift.
+
+If a future report or amendment arrives as `.docx`, it may be stored as a historical source document in a version/archive folder, but it must be incorporated into the live `.md` requirements before implementation.
