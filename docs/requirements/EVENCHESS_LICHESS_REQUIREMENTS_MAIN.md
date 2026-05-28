@@ -99,32 +99,32 @@ Any conflict between these assumptions and the checked-out codebase must be repo
 
 | Appendix | File | Primary authority |
 | --- | --- | --- |
-| A | APPENDIX_A_*.docx | Product invariants, vocabulary, modes, public positioning boundaries. |
-| B | APPENDIX_B_*.docx | Fork architecture, upstream sync, namespace strategy, source assumptions. |
-| C | APPENDIX_C_*.docx | What Lichess provides and must not be rebuilt. |
-| D | APPENDIX_D_*.docx | EvenChess mode identity, routing, player modes. |
-| E | APPENDIX_E_*.docx | Coaching ladder, registry, level gates. |
-| F | APPENDIX_F_*.docx | Board-first overlays, cards, accessibility. |
-| G | APPENDIX_G_*.docx | Server policy, coaching permission, ledger. |
-| H | APPENDIX_H_*.docx | Offset Count / Exchange Resolver. |
-| I | APPENDIX_I_*.docx | Assistance accounting and offset. |
-| J | APPENDIX_J_*.docx | ECR, calibration, matchmaking. |
-| K | APPENDIX_K_*.docx | Target mode isolation. |
-| L | APPENDIX_L_*.docx | Server-side Stockfish and engine help. |
-| M | APPENDIX_M_*.docx | AI policy and summaries. |
-| N | APPENDIX_N_*.docx | Tokens, subscriptions, ads, monetisation. |
-| O | APPENDIX_O_*.docx | Marketing config, landing variants, attribution. |
-| P | APPENDIX_P_*.docx | Telemetry, analytics, calibration. |
-| Q | APPENDIX_Q_*.docx | Abuse controls and trust. |
-| R | APPENDIX_R_*.docx | Admin, ops, dashboards, incidents. |
-| S | APPENDIX_S_*.docx | Stage 1 local boot and go/no-go. |
-| T | APPENDIX_T_*.docx | Codex phases and task packets. |
-| U | APPENDIX_U_*.docx | Logical data models and seams. |
-| V | APPENDIX_V_*.docx | Testing and acceptance. |
-| W | APPENDIX_W_*.docx | Reserved. |
-| X | APPENDIX_X_*.docx | Reserved. |
-| Y | APPENDIX_Y_*.docx | Reserved. |
-| Z | APPENDIX_Z_*.docx | Override/supersession register. |
+| A | APPENDIX_A_*.md | Product invariants, vocabulary, modes, public positioning boundaries. |
+| B | APPENDIX_B_*.md | Fork architecture, upstream sync, namespace strategy, source assumptions. |
+| C | APPENDIX_C_*.md | What Lichess provides and must not be rebuilt. |
+| D | APPENDIX_D_*.md | EvenChess mode identity, routing, player modes. |
+| E | APPENDIX_E_*.md | Coaching ladder, registry, level gates. |
+| F | APPENDIX_F_*.md | Board-first overlays, cards, accessibility. |
+| G | APPENDIX_G_*.md | Server policy, coaching permission, ledger. |
+| H | APPENDIX_H_*.md | Offset Count / Exchange Resolver. |
+| I | APPENDIX_I_*.md | Assistance accounting and offset. |
+| J | APPENDIX_J_*.md | ECR, calibration, matchmaking. |
+| K | APPENDIX_K_*.md | Target mode isolation. |
+| L | APPENDIX_L_*.md | Server-side Stockfish and engine help. |
+| M | APPENDIX_M_*.md | AI policy and summaries. |
+| N | APPENDIX_N_*.md | Tokens, subscriptions, ads, monetisation. |
+| O | APPENDIX_O_*.md | Marketing config, landing variants, attribution. |
+| P | APPENDIX_P_*.md | Telemetry, analytics, calibration. |
+| Q | APPENDIX_Q_*.md | Abuse controls and trust. |
+| R | APPENDIX_R_*.md | Admin, ops, dashboards, incidents. |
+| S | APPENDIX_S_*.md | Stage 1 local boot and go/no-go. |
+| T | APPENDIX_T_*.md | Codex phases and task packets. |
+| U | APPENDIX_U_*.md | Logical data models and seams. |
+| V | APPENDIX_V_*.md | Testing and acceptance. |
+| W | APPENDIX_W_*.md | Reserved. |
+| X | APPENDIX_X_*.md | Reserved. |
+| Y | APPENDIX_Y_*.md | Reserved. |
+| Z | APPENDIX_Z_*.md | Override/supersession register. |
 
 ## 7. Special documents
 
