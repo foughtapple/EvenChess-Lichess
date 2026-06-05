@@ -32,6 +32,7 @@ import {
 } from 'lib/ceval';
 import { ChatCtrl } from 'lib/chat/chatCtrl';
 import { displayColumns } from 'lib/device';
+import { installEvenChessUniversalOverlay, type EvenChessUniversalOverlayHandle } from 'lib/evenchessUniversalOverlay';
 import { playable, playedTurns, fenToEpd, validUci } from 'lib/game';
 import { plyColor } from 'lib/game/chess';
 import { PromotionCtrl } from 'lib/game/promotion';
@@ -152,6 +153,7 @@ export default class AnalyseCtrl implements CevalHandler {
   nvui?: NvuiPlugin;
   pvUciQueue: Uci[] = [];
   keyboardMove?: KeyboardMove;
+  evenChessUniversalOverlay?: EvenChessUniversalOverlayHandle;
 
   constructor(
     readonly opts: AnalyseOpts,
@@ -209,6 +211,15 @@ export default class AnalyseCtrl implements CevalHandler {
       opts.study && makeStudy
         ? new makeStudy(opts.study, this, (opts.tagTypes || '').split(','), opts.practice, opts.relay)
         : undefined;
+    this.evenChessUniversalOverlay = installEvenChessUniversalOverlay({
+      surface: this.study ? 'study' : 'analysis',
+      getFen: () => this.node?.fen,
+      getPly: () => this.node?.ply,
+      getGameId: () => (this.synthetic ? `analysis-${location.pathname}` : `analysis-${this.data.game.id}`),
+      getSide: () => this.bottomColor(),
+      getOrientation: () => this.bottomColor(),
+      getBoardElement: () => this.element.querySelector<HTMLElement>('.analyse__board.main-board'),
+    });
 
     if (location.hash === '#practice' || (this.study && this.study.data.chapter.practice))
       this.togglePractice();
@@ -376,6 +387,7 @@ export default class AnalyseCtrl implements CevalHandler {
       cg.playPremove();
     });
     this.pluginUpdate(this.node.fen);
+    this.evenChessUniversalOverlay?.refresh();
     this.onChange();
   }
 

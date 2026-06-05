@@ -1,6 +1,7 @@
 import type { MoveMetadata as CgMoveMetadata } from '@lichess-org/chessground/types';
 
 import type { ChatOpts as BaseChatOpts, ChatCtrl, ChatPlugin } from 'lib/chat/interfaces';
+import type { EvenChessTtsConfig } from 'lib/evenchessTts';
 import type { GameData, Status, RoundStep } from 'lib/game';
 import type { ClockData } from 'lib/game/clock/clockCtrl';
 import * as Prefs from 'lib/prefs';
@@ -80,6 +81,7 @@ export interface RoundData extends GameData {
   clock?: ClockData;
   pref: Pref;
   steps: RoundStep[];
+  evenchess?: EvenChessRoundData;
   possibleMoves?: EncodedDests;
   possibleDrops?: string;
   forecastCount?: number;
@@ -93,6 +95,235 @@ export interface RoundData extends GameData {
   expiration?: Expiration;
   local?: RoundProxy;
   noab?: boolean;
+}
+
+export interface EvenChessRoundData {
+  coachText?: EvenChessCoachTextSnapshot;
+  display?: EvenChessDisplayState;
+  live?: EvenChessLiveOverlay;
+  potentialMoves?: EvenChessPotentialMoveState;
+  proposedMove?: EvenChessProposedMoveState;
+  testGround?: EvenChessTestGroundState;
+  tts?: EvenChessTtsConfig;
+}
+
+export interface EvenChessDisplayState {
+  initializedForGameId?: string;
+  preferredUsedLevel?: number;
+  setLevel?: number;
+  usedLevel?: number;
+  toggles?: EvenChessDisplayToggles;
+}
+
+export interface EvenChessPreferenceConfig {
+  defaultSetLevel?: number;
+  defaultFeatureToggles?: EvenChessLevelFeatureToggles;
+  preferredUsedLevel?: number;
+  ttsEnabled?: boolean;
+  ttsAutoSpeak?: boolean;
+  ttsAutoDelaySeconds?: number;
+  ttsVoice?: string;
+  ttsRatePercent?: number;
+  ttsVolumePercent?: number;
+  ttsQueueBehavior?: 'replace-current' | 'queue';
+  ttsMuteDuringOpponentTurn?: boolean;
+}
+
+export type EvenChessLevelFeatureKey =
+  | 'rules'
+  | 'loosePieces'
+  | 'hangingPieces'
+  | 'offsetCount'
+  | 'studentThreats'
+  | 'opponentThreats'
+  | 'pins'
+  | 'coachText'
+  | 'candidate1'
+  | 'candidate2'
+  | 'openingWiki'
+  | 'candidate3'
+  | 'evalBar'
+  | 'evalNumbers'
+  | 'humanRisk'
+  | 'expertLines'
+  | 'fullSpecificity';
+
+export type EvenChessLevelFeatureToggles = Partial<Record<EvenChessLevelFeatureKey, boolean>>;
+
+export interface EvenChessDisplayToggles {
+  coachCards: boolean;
+  boardVisuals: boolean;
+  appliedLevel?: number;
+  levelFeatures?: EvenChessLevelFeatureToggles;
+}
+
+export interface EvenChessCoachTextSnapshot {
+  card: EvenChessCoachCard;
+  overlayAuditId: string;
+  overlayServerAuthorized: boolean;
+  capturedPly: number;
+  capturedBoardStateKey: string;
+  updatedAt?: number;
+}
+
+export interface EvenChessTestGroundState {
+  enabled: boolean;
+  level: number;
+  status: 'loading' | 'ready' | 'unavailable';
+  message: string;
+  requestedAt?: number;
+  updatedAt?: number;
+}
+
+export interface EvenChessProposedMoveState {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message?: string;
+  activeKey?: string;
+  active?: EvenChessProposedMoveCard;
+  baseOverlay?: EvenChessLiveOverlay;
+  cache?: Record<string, EvenChessProposedMoveCard>;
+  consumedByTurn?: Record<string, string>;
+  consumed?: number;
+  quota?: number;
+  updatedAt?: number;
+}
+
+export type EvenChessPotentialMoveKind = 'opponent' | 'player';
+
+export interface EvenChessPotentialMoveState {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  message?: string;
+  activeKey?: string;
+  activeKind?: EvenChessPotentialMoveKind;
+  active?: EvenChessPotentialMoveReveal;
+  cache?: Record<string, EvenChessPotentialMoveReveal>;
+  consumedByKey?: Record<string, true>;
+  consumedByKind?: Partial<Record<EvenChessPotentialMoveKind, number>>;
+  updatedAt?: number;
+}
+
+export interface EvenChessPotentialMoveReveal {
+  key: string;
+  gameId: string;
+  playerId?: string;
+  ply: number;
+  boardStateKey: string;
+  perspective: Color;
+  kind: EvenChessPotentialMoveKind;
+  level: number;
+  quota: number;
+  consumed: number;
+  cards: EvenChessCoachCard[];
+  visuals: EvenChessBoardVisual[];
+  auditId: string;
+  serverAuthorized: boolean;
+  approvedDisplayPayload: boolean;
+  cached?: boolean;
+  createdAt?: number;
+}
+
+export interface EvenChessProposedMoveCard {
+  key: string;
+  gameId: string;
+  playerId?: string;
+  ply: number;
+  boardStateKey: string;
+  perspective: Color;
+  moveUci: string;
+  san?: string;
+  legal?: boolean;
+  postMoveBoardStateKey?: string;
+  level: number;
+  title: string;
+  body: string;
+  source?: string;
+  cards?: EvenChessCoachCard[];
+  visuals?: EvenChessBoardVisual[];
+  auditId: string;
+  serverAuthorized: boolean;
+  approvedDisplayPayload: boolean;
+  cached?: boolean;
+  createdAt?: number;
+}
+
+export interface EvenChessLiveOverlay {
+  enabled: boolean;
+  gameId: string;
+  ply: number;
+  boardStateKey: string;
+  perspective: Color;
+  auditId: string;
+  serverAuthorized: boolean;
+  ttlMillis: number;
+  stale?: boolean;
+  createdAt?: number;
+  expiresAt?: number;
+  cards?: EvenChessCoachCard[];
+  visuals?: EvenChessBoardVisual[];
+  clear?: EvenChessClearInstruction[];
+  assistance?: EvenChessAssistanceUsage;
+}
+
+export interface EvenChessAssistanceUsage {
+  proposedMove?: {
+    consumed: number;
+    quota: number;
+  };
+  potentialMoves?: {
+    consumedByKind?: Partial<Record<EvenChessPotentialMoveKind, number>>;
+    quotaByKind?: Partial<Record<EvenChessPotentialMoveKind, number>>;
+  };
+}
+
+export interface EvenChessCoachCard {
+  id: string;
+  gameId: string;
+  ply: number;
+  boardStateKey: string;
+  featureKey: string;
+  title: string;
+  body: string;
+  level: number;
+  auditId: string;
+  defaultActive?: boolean;
+  visibility?: string;
+  serverAuthorized: boolean;
+  approvedDisplayPayload: boolean;
+  stale?: boolean;
+  ttlMillis?: number;
+  rawStockfishLine?: string;
+  hiddenDebugData?: string;
+  ttsText?: string;
+}
+
+export interface EvenChessBoardVisual {
+  id: string;
+  gameId: string;
+  ply: number;
+  boardStateKey: string;
+  featureKey: string;
+  label: string;
+  auditId: string;
+  primary?: boolean;
+  serverAuthorized: boolean;
+  approvedDisplayPayload: boolean;
+  stale?: boolean;
+  rawStockfishLine?: string;
+  hiddenDebugData?: string;
+  evalCpWhite?: number;
+  evalMateWhite?: number;
+  evalWinWhite?: number;
+  evalDrawWhite?: number;
+  evalLossWhite?: number;
+  evalSource?: string;
+}
+
+export interface EvenChessClearInstruction {
+  gameId: string;
+  ply: number;
+  boardStateKey: string;
+  reason: string;
+  auditId: string;
 }
 
 export interface Expiration {
@@ -193,6 +424,7 @@ export interface Pref {
   coords: Prefs.Coords;
   destination: boolean;
   enablePremove: boolean;
+  evenchess?: EvenChessPreferenceConfig;
   highlight: boolean;
   is3d: boolean;
   keyboardMove: boolean;

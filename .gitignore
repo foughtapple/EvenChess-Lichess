@@ -73,3 +73,10 @@ instance.lock
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Local Codex / Windows shell scratch artifacts
+/.codex/
+/NUL/
+/=*
+/tmp_test_file.txt
+/modules/web/src/main/ui/tmp_phaseB_test.txt

@@ -58,6 +58,44 @@
     grid-template-rows: fit-content(0);
     grid-template-areas: 'side  app   app' 'uchat under .';
 
+    &:has(> .round__app.evenchess-live-layout) {
+      grid-template-columns:
+        $col3-uniboard-side
+        18px
+        clamp(480px, calc(var(---col3-uniboard-width) - 28px), var(---col3-uniboard-width))
+        $col3-uniboard-table;
+      grid-template-rows: auto;
+      grid-template-areas:
+        'side ece-eval board coach'
+        'levels ece-eval board coach'
+        'levels ece-eval board voice'
+        'levels ece-eval board mat-top'
+        'levels ece-eval board clock-top'
+        'levels ece-eval board expi-top'
+        'levels ece-eval board user-top'
+        'levels ece-eval board moves'
+        'levels ece-eval board controls'
+        'levels ece-eval board user-bot'
+        'levels ece-eval board expi-bot'
+        'levels ece-eval board clock-bot'
+        'levels ece-eval board mat-bot'
+        'levels ece-eval board .'
+        'uchat . kb-move .'
+        'under under under .';
+
+      > .round__app.evenchess-live-layout {
+        display: contents;
+      }
+
+      .round__side,
+      .round__app__board,
+      .evenchess-live__eval,
+      .evenchess-live__level-column,
+      .evenchess-live__coach-column {
+        align-self: start;
+      }
+    }
+
     @include crosstable-large;
   }
 

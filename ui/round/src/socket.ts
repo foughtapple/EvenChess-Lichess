@@ -80,6 +80,7 @@ export function make(send: RoundSocketSend, ctrl: RoundController): RoundSocket 
     },
     move: ctrl.apiMove,
     drop: ctrl.apiMove,
+    evenchessLive: ctrl.applyEvenChessLiveOverlay,
     reload,
     redirect: ctrl.setRedirecting,
     clockInc(o: { color: Color; time: number }) {

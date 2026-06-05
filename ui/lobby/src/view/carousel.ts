@@ -19,7 +19,7 @@ export function makeCarousel({ selector, itemWidth, pauseFor, slideFor = 0.6 }: 
     onResize();
 
     el.style.visibility = 'visible';
-    document.querySelector<HTMLElement>('.lobby__support')!.style.visibility = 'visible';
+    document.querySelector<HTMLElement>('.lobby__support')?.style.setProperty('visibility', 'visible');
 
     window.addEventListener('resize', onResize);
 

@@ -10,12 +10,13 @@ Keep EvenChess-specific code separated, namespaced, documented, and easy to revi
 
 ## Before making code changes
 
-1. Read docs/evenchess/EVENCHESS_LICHESS_VERSION_1_PLAN.md if present.
-2. Read docs/evenchess/EVENCHESS_LICHESS_REQUIREMENTS_DIFF.md if present.
-3. Read docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md if present.
-4. Read docs/evenchess/EVENCHESS_UPSTREAM_SYNC_PROCESS.md if present.
-5. Read relevant files in docs/requirements only as source/reference requirements.
-6. Do not blindly implement old custom-platform requirements. First decide whether Lichess already provides that platform feature.
+1. Read docs/evenchess/EVENCHESS_LICHESS_VERSION_1_2_PLAN.md if present and the task mentions Version 1.2.
+2. Read docs/evenchess/EVENCHESS_LICHESS_VERSION_1_PLAN.md if present.
+3. Read docs/evenchess/EVENCHESS_LICHESS_REQUIREMENTS_DIFF.md if present.
+4. Read docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md if present.
+5. Read docs/evenchess/EVENCHESS_UPSTREAM_SYNC_PROCESS.md if present.
+6. Read relevant files in docs/requirements only as source/reference requirements.
+7. Do not blindly implement old custom-platform requirements. First decide whether Lichess already provides that platform feature.
 
 ## EvenChess invariants
 

@@ -1,0 +1,739 @@
+.evenchess-board-overlay {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  overflow: visible;
+  border-radius: inherit;
+  pointer-events: none;
+
+  &__arrows {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  &__arrow-label {
+    fill: #fffdf6;
+    font-size: 2.45px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  &__highlight {
+    position: absolute;
+    box-sizing: border-box;
+    border-radius: 0;
+    pointer-events: none;
+  }
+
+  &__indicator {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 253, 246, 0.92);
+    border-radius: 999px;
+    color: #fffdf6;
+    font-size: clamp(8px, 1.08vw, 13px);
+    font-weight: 850;
+    line-height: 1;
+    box-shadow: 0 2px 7px rgba(15, 23, 42, 0.22);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
+  }
+
+  &__indicator-icon {
+    width: 72%;
+    height: 72%;
+    display: grid;
+    place-items: center;
+    color: #fffdf6;
+    font-size: 1em;
+    line-height: 1;
+  }
+}
+
+.evenchess-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'coach'
+    'ece-eval'
+    'levels';
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  align-items: start;
+  pointer-events: none;
+
+  &__card {
+    min-height: 120px;
+    padding: 12px;
+    border: 1px solid #1f5796;
+    border-radius: 8px;
+    background: #071326;
+    color: #eaf2ff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+  }
+
+  &__level-column {
+    grid-area: levels;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    align-self: stretch;
+  }
+
+  &__card--levels {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    flex-direction: column;
+    align-self: stretch;
+  }
+
+  &__opening-wiki.analyse__wiki {
+    flex: 0 0 auto;
+    max-height: none;
+    margin: 0;
+    overflow: visible;
+    padding: 1rem 1rem 0;
+    pointer-events: auto;
+    scrollbar-gutter: stable both-edges;
+
+    &.empty {
+      visibility: visible;
+      min-height: 92px;
+      padding-bottom: 1rem;
+    }
+
+    &.empty .analyse__wiki-text {
+      min-height: 2.4rem;
+      max-height: none;
+      overflow: visible;
+    }
+
+    &:not(.empty):not(.toggle-box--toggle-off) .analyse__wiki-text {
+      min-height: min(28vh, 260px);
+      max-height: min(44vh, 420px);
+      overflow-y: auto;
+      padding-right: 0.35rem;
+      scrollbar-gutter: stable;
+    }
+
+    &.toggle-box--toggle-off .analyse__wiki-text {
+      max-height: none;
+      overflow: visible;
+    }
+
+    .evenchess-live__opening-wiki-empty {
+      margin: 0 0 1rem;
+      color: $c-font-dim;
+    }
+
+    p {
+      text-align: justify;
+      line-height: 1.4;
+    }
+
+    ul,
+    ol {
+      line-height: 1.4;
+      margin-bottom: 1rem;
+      padding-left: 1rem;
+    }
+
+    ul li {
+      list-style: disc;
+    }
+
+    ol li {
+      list-style: decimal;
+    }
+
+    h1,
+    h2 {
+      @include fluid-size('font-size', 17px, 23px);
+
+      margin-bottom: 1rem;
+    }
+
+    h3 {
+      margin-bottom: 0.7rem;
+      font-size: 1.2em;
+      font-weight: bold;
+    }
+  }
+
+  &__card--coach {
+    grid-area: coach;
+    height: 280px;
+    display: flex;
+    min-height: 280px;
+    flex-direction: column;
+  }
+
+  &__card--shell {
+    justify-content: flex-start;
+  }
+
+  &__card--proposed-control {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  &__card--proposed-result {
+    min-height: 112px;
+  }
+
+  &__eval {
+    grid-area: ece-eval;
+    position: relative;
+    width: 18px;
+    height: 100%;
+    min-height: 18rem;
+    overflow: hidden;
+    align-self: stretch;
+    border: 1px solid rgba(31, 87, 150, 0.92);
+    border-radius: 8px;
+    background: #f3ddb2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+  }
+
+  &__eval-fill {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: block;
+    background: #161616;
+    transition:
+      height 240ms ease-out,
+      background 240ms ease-out;
+  }
+
+  &__eval-midline {
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    left: 2px;
+    display: block;
+    border-top: 1px solid rgba(7, 19, 38, 0.5);
+  }
+
+  &__eval-label {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    display: inline-flex;
+    min-height: 18px;
+    align-items: center;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgba(255, 253, 246, 0.88);
+    color: #071326;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1;
+    transform: translateX(-50%) rotate(-90deg);
+    transform-origin: center;
+    white-space: nowrap;
+  }
+
+  &__eval[data-evenchess-eval='disabled'],
+  &__eval[data-evenchess-eval='unavailable'] {
+    opacity: 0.54;
+
+    .evenchess-live__eval-fill {
+      background: #243247;
+    }
+  }
+
+  &__coach-eval {
+    min-height: 28px;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 0.78rem;
+    font-weight: 850;
+    line-height: 1;
+    text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  &__coach-eval-score {
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__coach-column {
+    grid-area: coach;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__head {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  &__proposed-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__proposed-action {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    align-items: center;
+  }
+
+  &__proposed-button {
+    min-height: 34px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 7px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border: 1px solid #2dd4bf;
+    border-radius: 8px;
+    background: #08203a;
+    color: #f8fbff;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+
+    &.is-active {
+      background: #0f766e;
+      border-color: #5eead4;
+      color: #ffffff;
+    }
+
+    &:disabled {
+      border-color: #315d8e;
+      color: #8fa6c4;
+      cursor: default;
+      opacity: 0.72;
+    }
+  }
+
+  &__proposed-status {
+    min-width: 0;
+    overflow: hidden;
+    color: #a9c6ee;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__spinner {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+    flex: 0 0 auto;
+    border: 2px solid rgba(169, 198, 238, 0.36);
+    border-top-color: #2dd4bf;
+    border-radius: 50%;
+    animation: evenchess-live-spin 700ms linear infinite;
+  }
+
+  &__label {
+    color: #2dd4bf;
+    font-size: 0.85rem;
+    line-height: 1.2;
+  }
+
+  &__audit {
+    overflow: hidden;
+    max-width: 11rem;
+    color: #a9c6ee;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__level,
+  &__used {
+    min-height: 24px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  &__level {
+    border: 1px solid #2dd4bf;
+    background: #08203a;
+    color: #eaf2ff;
+  }
+
+  &__used {
+    border: 1px solid #315d8e;
+    background: #0d2038;
+    color: #c9dcf5;
+  }
+
+  &__level-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  &__level-grid--summary {
+    margin-bottom: 10px;
+  }
+
+  &__metric {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid #173a65;
+    border-radius: 8px;
+    background: #0a1a2e;
+    color: #d7e5f8;
+    font-size: 0.78rem;
+    line-height: 1.25;
+
+    b {
+      display: block;
+      margin-bottom: 2px;
+      color: #7dd3fc;
+      font-size: 0.68rem;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    span {
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__metric--wide {
+    grid-column: 1 / -1;
+  }
+
+  &__apply {
+    min-height: 34px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    color: #d7e5f8;
+    font-size: 0.78rem;
+
+    select {
+      min-width: 0;
+      min-height: 30px;
+      border: 1px solid #315d8e;
+      border-radius: 8px;
+      background: #0b1b30;
+      color: #eaf2ff;
+      font: inherit;
+    }
+  }
+
+  &__level-list {
+    max-height: none;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+  }
+
+  &__level-row {
+    min-width: 0;
+    padding: 8px 0;
+    border-top: 1px solid #173a65;
+
+    &.is-disabled {
+      opacity: 0.48;
+    }
+  }
+
+  &__level-row-head {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+    color: #eaf2ff;
+    font-size: 0.78rem;
+    line-height: 1.2;
+
+    strong {
+      color: #7dd3fc;
+      font-size: 0.76rem;
+    }
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &__feature-list {
+    display: grid;
+    gap: 5px;
+  }
+
+  &__feature-toggle {
+    min-height: 32px;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 5px 7px;
+    border: 1px solid #203c62;
+    border-radius: 8px;
+    background: #0a1a2e;
+    color: #eaf2ff;
+    cursor: pointer;
+
+    input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #2dd4bf;
+    }
+  }
+
+  &__feature-text {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  &__feature-label {
+    overflow: hidden;
+    color: #eaf2ff;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__surface,
+  &__level-empty {
+    margin: 0;
+    color: #a9c6ee;
+    font-size: 0.68rem;
+    line-height: 1.2;
+  }
+
+  &__head-actions {
+    display: flex;
+    min-width: 0;
+    gap: 6px;
+    align-items: center;
+  }
+
+  &__tts {
+    min-height: 28px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: 1px solid #2dd4bf;
+    border-radius: 8px;
+    background: #08203a;
+    color: #eaf2ff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      border-color: #7dd3fc;
+      color: #fff;
+    }
+
+    &:disabled {
+      border-color: #294661;
+      background: #071626;
+      color: #7891ad;
+      cursor: not-allowed;
+      opacity: 0.72;
+    }
+  }
+
+  &__tts-label {
+    line-height: 1;
+  }
+
+  &__title {
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+
+  &__body {
+    min-height: 0;
+    flex: 1 1 auto;
+    margin: 0;
+    overflow-y: auto;
+    color: #d7e5f8;
+    font-size: 0.9rem;
+    line-height: 1.35;
+    scrollbar-width: thin;
+  }
+
+  &__coach-potentials {
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #173a65;
+  }
+
+  &__coach-potentials-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: #7dd3fc;
+    font-size: 0.76rem;
+    line-height: 1.2;
+
+    span {
+      color: #a9c6ee;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  &__coach-potentials-list {
+    display: grid;
+    gap: 4px;
+    margin: 6px 0 0;
+    padding-left: 1.2rem;
+    color: #d7e5f8;
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  &__visuals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    pointer-events: auto;
+  }
+
+  &__visual {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 9px;
+    border: 1px solid #2dd4bf;
+    border-radius: 8px;
+    background: #08203a;
+    color: #eaf2ff;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  @include mq-is-col1 {
+    grid-area: coach;
+    grid-template-columns: minmax(0, 1fr);
+    margin: 8px 0;
+
+    &__card {
+      min-height: 0;
+    }
+
+    &__card--coach {
+      height: auto;
+      min-height: 220px;
+    }
+
+    &__eval {
+      width: 100%;
+      height: 20px;
+      min-height: 20px;
+    }
+
+    &__eval-label {
+      right: 6px;
+      bottom: 50%;
+      left: auto;
+      transform: translateY(50%);
+    }
+
+    &__level-list {
+      max-height: 250px;
+    }
+  }
+
+  @include mq-at-least-col2 {
+    display: contents;
+
+    &__level-column {
+      height: var(--evenchess-levels-height, min(78vh, 680px));
+      max-height: var(--evenchess-levels-height, min(78vh, 680px));
+      min-height: 0;
+      overflow: hidden;
+      align-self: start;
+    }
+
+    &__card--levels {
+      flex: 1 1 auto;
+      overflow: hidden;
+      align-self: start;
+    }
+
+    &__eval {
+      height: var(--evenchess-board-height, 100%);
+      min-height: 0;
+      align-self: start;
+    }
+
+    &__coach-column {
+      align-self: start;
+    }
+  }
+
+  @include mq-at-least-col3 {
+    &__level-column {
+      height: var(--evenchess-levels-height, 100%);
+      max-height: var(--evenchess-levels-height, none);
+    }
+
+    &__eval {
+      height: var(--evenchess-board-height, 100%);
+      min-height: 0;
+    }
+  }
+}
+
+@keyframes evenchess-live-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

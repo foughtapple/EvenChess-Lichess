@@ -3,6 +3,17 @@
 # Lobby
 GET   /                                controllers.Lobby.home
 GET   /lobby/seeks                     controllers.Lobby.seeks
+GET   /evenchess/play                  controllers.EvenChess.play
+GET   /evenchess/play/search           controllers.EvenChess.search
+GET   /evenchess/play/search.json      controllers.EvenChess.searchJson
+GET   /evenchess/account               controllers.EvenChess.account
+GET   /evenchess/ece/board-overlay     controllers.EvenChess.eceBoardOverlay
+GET   /evenchess/testground/ece/board-overlay controllers.EvenChess.testGroundEceBoardOverlay
+GET   /evenchess/testground/ece/game-history controllers.EvenChess.testGroundEceGameHistory
+POST  /evenchess/testground/ece/full-game-review controllers.EvenChess.testGroundEceFullGameReview
+POST  /evenchess/testground/ece/full-match-summary controllers.EvenChess.testGroundEceFullMatchSummary
+POST  /evenchess/testground/ece/proposed-move controllers.EvenChess.testGroundEceProposedMove
+POST  /evenchess/testground/ece/potential-move controllers.EvenChess.testGroundEcePotentialMove
 
 # 2-letter routes, then lang route
 GET   /tv                              controllers.Tv.index
@@ -930,9 +941,14 @@ POST  /run/toggle-blind-mode           controllers.Main.toggleBlindMode
 POST  /run/cli                         controllers.Dev.command
 
 # Dev
-GET   /dev/cli                         controllers.Dev.cli
-POST  /dev/cli                         controllers.Dev.cliPost
-GET   /dev/settings                    controllers.Dev.settings
+  GET   /dev/cli                         controllers.Dev.cli
+  POST  /dev/cli                         controllers.Dev.cliPost
+  GET   /dev/evenchess/ops               controllers.Dev.evenChessOps
+  GET   /dev/evenchess/ops/bots          controllers.Dev.evenChessBotOpsPanel
+  POST  /dev/evenchess/ops/bots/:action  controllers.Dev.evenChessBotOps(action)
+  GET   /dev/evenchess/ops/ecor          controllers.Dev.evenChessEcorPanel
+  POST  /dev/evenchess/ops/ecor/:action  controllers.Dev.evenChessEcorOps(action)
+  GET   /dev/settings                    controllers.Dev.settings
 POST  /dev/settings/:id                controllers.Dev.settingsPost(id)
 GET   /dev/ip-tiers                    controllers.Dev.ipTiers
 POST  /dev/ip-tiers                    controllers.Dev.ipTiersPost

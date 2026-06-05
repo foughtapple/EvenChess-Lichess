@@ -15,10 +15,10 @@ final class TopNav(helpers: Helpers):
     st.nav(id := "topnav", cls := "hover")(
       st.section(
         linkTitle(
-          "/",
+          s"${langHref("/")}?any#hook",
           frag(
             span(cls := "play")(trans.site.play()),
-            span(cls := "home")("lichess.org")
+            span(cls := "home")("EvenChess")
           )
         ),
         div(role := "group")(

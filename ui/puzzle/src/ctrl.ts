@@ -14,6 +14,7 @@ import { prop, type Prop, propWithEffect, type Toggle, toggle, requestIdleCallba
 import { type Deferred, defer, throttle } from 'lib/async';
 import { CevalCtrl } from 'lib/ceval';
 import type { CevalHandler } from 'lib/ceval/types';
+import { installEvenChessUniversalOverlay, type EvenChessUniversalOverlayHandle } from 'lib/evenchessUniversalOverlay';
 import { plyColor } from 'lib/game/chess';
 import { type WithGround } from 'lib/game/ground';
 import { PromotionCtrl } from 'lib/game/promotion';
@@ -84,6 +85,9 @@ export default class PuzzleCtrl implements CevalHandler {
   isDaily: boolean;
   blindfolded: StoredProp<boolean>;
   cgVersion = 1;
+  evenChessUniversalOverlay?: EvenChessUniversalOverlayHandle;
+  evenChessLevelsElement?: HTMLElement;
+  evenChessPanelElement?: HTMLElement;
 
   private report: Report;
 
@@ -159,6 +163,17 @@ export default class PuzzleCtrl implements CevalHandler {
       playUci: (uci: Uci) => this.sendMove(parseUci(uci)!),
     };
     (window as any).lichess.chessground = this.ground;
+    this.evenChessUniversalOverlay = installEvenChessUniversalOverlay({
+      surface: 'puzzle',
+      getFen: () => this.node?.fen,
+      getPly: () => this.node?.ply,
+      getGameId: () => `puzzle-${this.data.puzzle.id}`,
+      getSide: () => this.pov,
+      getOrientation: () => (this.flipped() ? opposite(this.pov) : this.pov),
+      getLevelsElement: () => this.evenChessLevelsElement,
+      getBoardElement: () => document.querySelector<HTMLElement>('.puzzle__board.main-board'),
+      getPanelElement: () => this.evenChessPanelElement,
+    });
   }
 
   private readonly loadSound = (name: string, volume?: number) => {
@@ -213,6 +228,16 @@ export default class PuzzleCtrl implements CevalHandler {
     });
 
     this.googlyEyesAuto();
+  };
+
+  setEvenChessPanelElement = (el: HTMLElement): void => {
+    this.evenChessPanelElement = el;
+    this.evenChessUniversalOverlay?.refresh();
+  };
+
+  setEvenChessLevelsElement = (el: HTMLElement): void => {
+    this.evenChessLevelsElement = el;
+    this.evenChessUniversalOverlay?.refresh();
   };
 
   googlyEyesStart: () => void = () => {
@@ -329,6 +354,7 @@ export default class PuzzleCtrl implements CevalHandler {
   showGround = (g: CgApi): void => {
     g.set(this.makeCgOpts());
     this.setAutoShapes();
+    this.evenChessUniversalOverlay?.refresh();
   };
 
   pluginMove = (orig: Key, dest: Key, role?: Role) => {

@@ -20,6 +20,7 @@ import { wikiToggleBox } from '@/wiki';
 
 import { viewContext, renderBoard, renderMain, renderUnderboard } from './components';
 import { renderControls } from './controls';
+import { renderEvenChessLearning } from './evenchessLearning';
 import { render as trainingView } from './roundTraining';
 import { renderTools } from './tools';
 
@@ -65,6 +66,7 @@ function analyseView(ctrl: AnalyseCtrl, deps?: typeof studyDeps): VNode {
         }),
       },
       [
+        renderEvenChessLearning(ctrl, 'analysis'),
         ctrl.forecast && forecastView(ctrl, ctrl.forecast),
         !ctrl.synthetic &&
           playable(ctrl.data) &&

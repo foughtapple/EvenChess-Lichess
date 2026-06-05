@@ -4,6 +4,7 @@ import play.api.data.*
 import play.api.data.Forms.*
 
 import lila.common.Form.{ numberIn, stringIn, tolerantBoolean }
+import lila.evenchess.UserSettings
 
 object PrefForm:
 
@@ -104,7 +105,49 @@ object PrefForm:
       "studyInvite" -> optional(checkedNumber(Pref.StudyInvite.choices)),
       "insightShare" -> numberIn(Set(0, 1, 2)),
       fields.ratings.map2(optional),
-      fields.flairs.map2(optional)
+      fields.flairs.map2(optional),
+      "evenchess" -> mapping(
+        "defaultSetLevel" -> number(UserSettings.minSetLevel, UserSettings.maxSetLevel),
+        "preferredUsedLevel" -> number(UserSettings.minSetLevel, UserSettings.maxSetLevel),
+        "defaultFeatureToggles" -> mapping(
+          "rules" -> boolean,
+          "loosePieces" -> boolean,
+          "hangingPieces" -> boolean,
+          "offsetCount" -> boolean,
+          "studentThreats" -> boolean,
+          "opponentThreats" -> boolean,
+          "pins" -> boolean,
+          "coachText" -> boolean,
+          "candidate1" -> boolean,
+          "candidate2" -> boolean,
+          "openingWiki" -> boolean,
+          "candidate3" -> boolean,
+          "evalBar" -> boolean,
+          "evalNumbers" -> boolean,
+          "humanRisk" -> boolean,
+          "expertLines" -> boolean,
+          "fullSpecificity" -> boolean
+        )(UserSettings.DefaultFeatureToggles.apply)(UserSettings.DefaultFeatureToggles.unapplyForm),
+        "overlayDensity" -> stringIn(UserSettings.OverlayDensity.keys),
+        "coachingCardVerbosity" -> stringIn(UserSettings.CoachingCardVerbosity.keys),
+        "boardHighlightIntensity" -> stringIn(UserSettings.BoardHighlightIntensity.keys),
+        "offsetCountDisplay" -> stringIn(UserSettings.OffsetCountDisplay.keys),
+        "aiSummaryPreference" -> stringIn(UserSettings.AiSummaryPreference.keys),
+        "ttsEnabled" -> boolean,
+        "ttsAutoSpeak" -> boolean,
+        "ttsAutoDelaySeconds" -> number(
+          UserSettings.minTtsAutoDelaySeconds,
+          UserSettings.maxTtsAutoDelaySeconds
+        ),
+        "ttsVoice" -> stringIn(UserSettings.TtsVoice.keys),
+        "ttsRatePercent" -> number(UserSettings.minTtsRatePercent, UserSettings.maxTtsRatePercent),
+        "ttsVolumePercent" -> number(UserSettings.minTtsVolumePercent, UserSettings.maxTtsVolumePercent),
+        "ttsQueueBehavior" -> stringIn(UserSettings.TtsQueueBehavior.keys),
+        "ttsMuteDuringOpponentTurn" -> boolean,
+        "studyAiOverlay" -> boolean,
+        "openingAiOverlay" -> boolean,
+        "telemetryPreference" -> stringIn(UserSettings.TelemetryPreference.keys)
+      )(UserSettings.FormDataMapping.apply)(UserSettings.FormDataMapping.unapply)
     )(PrefData.apply)(unapply)
   )
 
@@ -151,7 +194,8 @@ object PrefForm:
       studyInvite: Option[Int],
       insightShare: Int,
       ratings: Option[Int],
-      flairs: Option[Boolean]
+      flairs: Option[Boolean],
+      evenchess: UserSettings.FormData
   ):
 
     def apply(pref: Pref) =
@@ -186,7 +230,8 @@ object PrefForm:
         rookCastle = behavior.rookCastle | pref.rookCastle,
         sayGG = behavior.sayGG | pref.sayGG,
         pieceNotation = display.pieceNotation | pref.pieceNotation,
-        moveEvent = behavior.moveEvent | pref.moveEvent
+        moveEvent = behavior.moveEvent | pref.moveEvent,
+        tags = UserSettings.writeFormDataToTags(pref.tags, evenchess)
       )
 
   object PrefData:
@@ -228,7 +273,8 @@ object PrefForm:
         studyInvite = pref.studyInvite.some,
         insightShare = pref.insightShare,
         ratings = pref.ratings.some,
-        flairs = pref.flairs.some
+        flairs = pref.flairs.some,
+        evenchess = UserSettings.fromTags(pref.tags).toFormData
       )
 
   def prefOf(p: Pref): Form[PrefData] = pref(lichobile = false).fill(PrefData(p))

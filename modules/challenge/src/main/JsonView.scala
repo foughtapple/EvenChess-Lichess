@@ -94,6 +94,7 @@ final class JsonView(
       .add("declineReason" -> c.declineReason.map(_.trans.txt()))
       .add("declineReasonKey" -> c.declineReason.map(_.key))
       .add("open" -> c.open)
+      .add("evenChessInfo" -> c.evenChessInfo)
       .add("rules" -> c.nonEmptyRules)
 
   def all(challenges: AllChallenges)(using Translate) = Json.obj(

@@ -18,10 +18,22 @@ import { tourStandingCtrl, type TourStandingCtrl } from './tourStanding';
 import { main as view } from './view/main';
 
 const patch = init([classModule, attributesModule]);
+const piecePreloadMaxWaitMillis = 1500;
 
 export async function initModule(opts: RoundOpts): Promise<RoundController> {
-  await site.asset.loadPieces;
+  await waitForPiecePreload();
   return opts.data.local ? app(opts) : boot(opts, app);
+}
+
+async function waitForPiecePreload(): Promise<void> {
+  try {
+    await Promise.race([
+      site.asset.loadPieces,
+      new Promise<void>(resolve => setTimeout(resolve, piecePreloadMaxWaitMillis)),
+    ]);
+  } catch (error) {
+    console.warn('Round piece preload failed; continuing with interactive board boot.', error);
+  }
 }
 
 async function app(opts: RoundOpts): Promise<RoundController> {

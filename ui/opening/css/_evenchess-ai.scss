@@ -1,0 +1,91 @@
+.opening__evenchess-ai {
+  display: flex;
+  flex-flow: column nowrap;
+  gap: 0.7rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px solid #2f6ea1;
+  border-radius: 8px;
+  background: #10243a;
+  color: #f0f7ff;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  &__brand {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  &__surface {
+    padding: 0.15rem 0.45rem;
+    border: 1px solid #7db7e8;
+    border-radius: 999px;
+    color: #c8e6ff;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  &__card {
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(125, 183, 232, 0.35);
+  }
+
+  &__card-head {
+    display: flex;
+    min-width: 0;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &__tts {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #7db7e8;
+    border-radius: 8px;
+    background: #0a3555;
+    color: #f0f7ff;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      border-color: #2dd4bf;
+      color: #fff;
+    }
+  }
+
+  &__title {
+    margin: 0 0 0.35rem;
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  &__body {
+    margin: 0;
+    color: #dceeff;
+    line-height: 1.35;
+  }
+
+  &__bullets {
+    margin: 0.5rem 0 0;
+    padding-inline-start: 1.1rem;
+    color: #c8e6ff;
+  }
+
+  &__source {
+    margin: 0.55rem 0 0;
+    color: #91bfe7;
+    font-size: 0.75rem;
+  }
+}

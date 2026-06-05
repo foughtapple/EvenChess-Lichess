@@ -88,6 +88,39 @@
     line-height: inherit;
   }
 
+  .evenchess-token-balance {
+    @extend %flex-center-nowrap;
+
+    gap: 0.35rem;
+    height: $site-header-height;
+    padding: 0 0.65rem;
+    border-inline: 1px solid rgba(31, 121, 216, 0.28);
+    background: #0b1f3f;
+    color: #d7e5f8;
+
+    &:hover {
+      background: #12305a;
+      color: #fff !important;
+    }
+
+    &__count {
+      min-width: 1.4rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: $box-radius-size;
+      background: #1f79d8;
+      color: #fff;
+      font-weight: bold;
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    &__label {
+      font-size: 0.82rem;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+  }
+
   .report-score {
     &:not(.report-score--high)::after {
       background: $c-bg-page;

@@ -2,6 +2,7 @@ import type { VNode } from 'snabbdom';
 
 import type { ExternalEngineInfo } from 'lib/ceval';
 import type { ChatCtrl, ChatPlugin, ChatOpts } from 'lib/chat/interfaces';
+import type { EvenChessTtsConfig } from 'lib/evenchessTts';
 import type { Player, Status, Source, Clock } from 'lib/game';
 import type { Coords, MoveEvent } from 'lib/prefs';
 import type { EnhanceOpts } from 'lib/richText';
@@ -53,6 +54,57 @@ export interface AnalyseData {
   };
   puzzle?: OpeningPuzzle;
   externalEngines?: ExternalEngineInfo[];
+  evenchess?: EvenChessAnalyseData;
+}
+
+export type EvenChessLearningSurface = 'analysis' | 'study' | 'opening';
+
+export interface EvenChessLearningSourceFact {
+  factId: string;
+  text?: string;
+  boardStateKey: string;
+  exactnessClass?: string;
+  auditTag?: string;
+}
+
+export interface EvenChessLearningCard {
+  id: string;
+  kind: 'chapterSummary' | 'positionExplanation' | 'openingPlan' | 'mistakeTheme' | 'explainMove';
+  title: string;
+  body: string;
+  bullets?: string[];
+  sourceFactIds: string[];
+  auditId: string;
+  serverAuthorized: boolean;
+  approvedDisplayPayload: boolean;
+  rawEnginePayload?: string;
+  hiddenDebugData?: string;
+  providerSecret?: string;
+  rawPrompt?: string;
+  modelLabel?: string;
+  ttsText?: string;
+}
+
+export interface EvenChessLearningPayload {
+  enabled: boolean;
+  surface: EvenChessLearningSurface;
+  contextId: string;
+  boardStateKey: string;
+  ply: number;
+  source?: string;
+  ratedLive?: boolean;
+  serverAuthorized: boolean;
+  policyVersion?: string;
+  schemaVersion?: string;
+  auditId: string;
+  expiresAt?: number;
+  sourceFacts?: EvenChessLearningSourceFact[];
+  cards?: EvenChessLearningCard[];
+}
+
+export interface EvenChessAnalyseData {
+  learning?: EvenChessLearningPayload;
+  tts?: EvenChessTtsConfig;
 }
 
 export interface AnalysePref {

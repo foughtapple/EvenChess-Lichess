@@ -1,0 +1,865 @@
+'use strict';
+
+const fs = require('fs');
+const crypto = require('crypto');
+
+const ENGINE_VERSION = 'ece-v1-framework';
+const SCHEMA_NAME = 'evenchess_engine_output';
+const SCHEMA_VERSION = '1.0';
+const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+const PIECE_VALUES_CP = { pawn: 100, knight: 300, bishop: 300, rook: 500, queen: 900, king: 0 };
+const FORBIDDEN_OUTPUT_WORDS = ['api_key', 'token', 'secret'];
+
+function isObj(v) {
+  return Object.prototype.toString.call(v) === '[object Object]';
+}
+
+function uniq(arr) {
+  return [...new Set(arr.filter(Boolean))];
+}
+
+function elapsedMs(startNs) {
+  return Number((process.hrtime.bigint() - startNs) / 1000000n);
+}
+
+function safeString(value, fallback = '') {
+  if (value === undefined || value === null) return fallback;
+  return String(value)
+    .replace(/api[_-]?key/gi, 'credential_field')
+    .replace(/token/gi, 'credential_field')
+    .replace(/secret/gi, 'credential_field')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, 400);
+}
+
+function containsCredentialKey(value) {
+  if (Array.isArray(value)) return value.some(containsCredentialKey);
+  if (!isObj(value)) return false;
+  return Object.keys(value).some((key) => {
+    const k = key.toLowerCase();
+    return k.includes('api_key') || k.includes('apikey') || k.includes('api-key') ||
+      k.includes('token') || k.includes('secret') || k.includes('password') ||
+      k.includes('credential') || containsCredentialKey(value[key]);
+  });
+}
+
+function emptyCounts() {
+  return { pawn: 0, knight: 0, bishop: 0, rook: 0, queen: 0, king: 0 };
+}
+
+function baseShared(sideToMove = 'unknown', normalizedRequest = null) {
+  const requestedOpening = normalizedRequest && normalizedRequest.custom ? normalizedRequest.custom.opening : 0;
+  return {
+    legal_state: {
+      side_to_move: sideToMove,
+      in_check: false,
+      checkmated: false,
+      stalemated: false,
+      legal_move_count: 0,
+    },
+    material_state: {
+      white_piece_counts: {},
+      black_piece_counts: {},
+      material_balance_cp: 0,
+      material_balance_simple: 'unknown',
+    },
+    safety_map: {
+      white_hanging_pieces: [],
+      black_hanging_pieces: [],
+      white_loose_pieces: [],
+      black_loose_pieces: [],
+      white_attackable_hanging_pieces: [],
+      black_attackable_hanging_pieces: [],
+      white_king_danger: {},
+      black_king_danger: {},
+    },
+    trade_map: { items: [] },
+    threat_map: { white_threats: [], black_threats: [] },
+    pin_map: { white_pinned: [], black_pinned: [] },
+    motif_map: {
+      pins: [],
+      forks: [],
+      skewers: [],
+      x_rays: [],
+      back_rank: [],
+      critical_squares: [],
+      pressure_lines: [],
+    },
+    opening_map: {
+      requested_opening: requestedOpening || 0,
+      matched: false,
+      current_line: 0,
+      book_moves: [],
+    },
+    stockfish: {
+      available: false,
+      used: false,
+      profile: 0,
+      candidates: [],
+      evaluation: 0,
+    },
+  };
+}
+
+function baseOutput() {
+  return {
+    schema: { name: SCHEMA_NAME, version: SCHEMA_VERSION, engine_version: ENGINE_VERSION },
+    request_echo: {},
+    position: {},
+    shared_calculations: baseShared(),
+    side_outputs: { white: {}, black: {} },
+    diagnostics: { status: 'ok', elapsed_ms: 0, modules_used: [], warnings: [], errors: [] },
+    unavailable: {
+      stockfish: 'not_implemented_framework_only',
+      ai: 'use_ai_0',
+      opening: 'custom_opening_0',
+      tablebase: 'not_implemented_framework_only',
+    },
+  };
+}
+
+function normalizeLevel(value) {
+  if (value === undefined || value === null || value === '') return 10;
+  const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  if (!Number.isInteger(n) || n < 0 || n > 10) {
+    const err = new Error('ECE level must be an integer from 0 to 10.');
+    err.code = 'invalid_request';
+    throw err;
+  }
+  return n;
+}
+
+function normalizeZeroOne(value, defaultValue, fieldName) {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (value === 0 || value === '0' || value === false) return 0;
+  if (value === 1 || value === '1' || value === true) return 1;
+  const err = new Error(`${fieldName} must be 0 or 1.`);
+  err.code = 'invalid_request';
+  throw err;
+}
+
+function normalizeRating(value) {
+  if (value === undefined || value === null || value === '') return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeCustom(value) {
+  const c = isObj(value) ? value : {};
+  const rawOpening = c.opening === undefined || c.opening === null ? 0 : c.opening;
+  let opening = 0;
+  if (rawOpening === 0 || rawOpening === '0' || rawOpening === false || rawOpening === '') opening = 0;
+  else if (typeof rawOpening === 'string') opening = safeString(rawOpening, 0);
+  else opening = rawOpening ? 1 : 0;
+
+  const rawInstructions = c.instructions === undefined || c.instructions === null ? 0 : c.instructions;
+  const instructionsUsed = !(rawInstructions === 0 || rawInstructions === '0' || rawInstructions === false || rawInstructions === '');
+  return { opening, instructions: instructionsUsed ? 1 : 0, opening_used: opening !== 0, instructions_used: instructionsUsed };
+}
+
+function normalizeEceRequest(input) {
+  const root = isObj(input) && isObj(input.request) ? input.request : input;
+  if (!isObj(root)) {
+    const err = new Error('Input must be an object containing a request object.');
+    err.code = 'invalid_request';
+    throw err;
+  }
+
+  const errors = [];
+  const warnings = [];
+  const credentialFieldIgnored = containsCredentialKey(input);
+  if (credentialFieldIgnored) warnings.push('Credential-like fields were supplied and ignored.');
+
+  const request_id = root.request_id === undefined || root.request_id === null || root.request_id === ''
+    ? `ece_req_${Date.now()}`
+    : safeString(root.request_id, `ece_req_${Date.now()}`);
+  const input_fen = typeof root.input_fen === 'string' ? root.input_fen.trim() : '';
+  if (!input_fen) errors.push('request.input_fen is required.');
+
+  const white_level_defaulted = root.white_level === undefined || root.white_level === null || root.white_level === '';
+  const black_level_defaulted = root.black_level === undefined || root.black_level === null || root.black_level === '';
+  let white_level = 10;
+  let black_level = 10;
+  let use_ai = 0;
+
+  try { white_level = normalizeLevel(root.white_level); } catch (err) { errors.push(`request.white_level ${err.message}`); }
+  try { black_level = normalizeLevel(root.black_level); } catch (err) { errors.push(`request.black_level ${err.message}`); }
+  try { use_ai = normalizeZeroOne(root.use_ai, 0, 'request.use_ai'); } catch (err) { errors.push(err.message); }
+
+  const normalized = {
+    request_id,
+    input_fen,
+    rating_type: safeString(root.rating_type === undefined || root.rating_type === null ? 'unknown' : root.rating_type, 'unknown') || 'unknown',
+    white_rating_input: normalizeRating(root.white_rating_input),
+    black_rating_input: normalizeRating(root.black_rating_input),
+    white_level,
+    black_level,
+    white_level_defaulted,
+    black_level_defaulted,
+    use_ai,
+    custom: normalizeCustom(root.custom),
+    credential_field_ignored: credentialFieldIgnored,
+    normalization_warnings: warnings,
+  };
+
+  if (errors.length) {
+    const err = new Error(errors.join(' '));
+    err.code = 'invalid_request';
+    err.normalized = normalized;
+    err.errors = errors;
+    err.warnings = warnings;
+    throw err;
+  }
+  return normalized;
+}
+
+function parseFenBoard(board, errors) {
+  const rows = board.split('/');
+  const white = emptyCounts();
+  const black = emptyCounts();
+  const boardSquares = {};
+  if (rows.length !== 8) {
+    errors.push('FEN board field must contain 8 ranks.');
+    return { white, black, boardSquares };
+  }
+
+  rows.forEach((row, rankIndex) => {
+    let fileIndex = 0;
+    let previousWasDigit = false;
+    if (!row) errors.push(`FEN rank ${8 - rankIndex} is empty.`);
+    for (const ch of row) {
+      if (/^[1-8]$/.test(ch)) {
+        if (previousWasDigit) errors.push(`FEN rank ${8 - rankIndex} has adjacent digit fields.`);
+        fileIndex += Number(ch);
+        previousWasDigit = true;
+        continue;
+      }
+      previousWasDigit = false;
+      if (!/^[pnbrqkPNBRQK]$/.test(ch)) {
+        errors.push(`FEN rank ${8 - rankIndex} contains invalid piece character.`);
+        continue;
+      }
+      if (fileIndex >= 8) {
+        errors.push(`FEN rank ${8 - rankIndex} has too many files.`);
+        continue;
+      }
+      const square = `${'abcdefgh'[fileIndex]}${8 - rankIndex}`;
+      boardSquares[square] = ch;
+      const counts = ch === ch.toUpperCase() ? white : black;
+      counts[PIECE_NAMES[ch.toLowerCase()]] += 1;
+      fileIndex += 1;
+    }
+    if (fileIndex !== 8) errors.push(`FEN rank ${8 - rankIndex} must contain exactly 8 files.`);
+  });
+
+  if (white.king !== 1) errors.push('FEN must contain exactly one white king.');
+  if (black.king !== 1) errors.push('FEN must contain exactly one black king.');
+  return { white, black, boardSquares };
+}
+
+function materialCp(white, black) {
+  return Object.keys(PIECE_VALUES_CP).reduce((sum, name) => sum + ((white[name] || 0) - (black[name] || 0)) * PIECE_VALUES_CP[name], 0);
+}
+
+function materialLabel(cp) {
+  if (!Number.isFinite(cp)) return 'unknown';
+  if (cp > 0) return 'white_ahead';
+  if (cp < 0) return 'black_ahead';
+  return 'equal';
+}
+
+function parseFenLite(fen) {
+  const validation_errors = [];
+  const input_fen = typeof fen === 'string' ? fen.trim() : '';
+  const position = {
+    input_fen,
+    normalized_fen: input_fen,
+    position_hash: '',
+    side_to_move: 'unknown',
+    is_valid: false,
+    validation_errors,
+    fullmove_number: 0,
+    halfmove_clock: 0,
+    castling_rights: '',
+    en_passant_square: '',
+    piece_counts: { white: emptyCounts(), black: emptyCounts() },
+    board_squares: {},
+    material_balance_cp: 0,
+  };
+
+  if (!input_fen) {
+    validation_errors.push('FEN is required.');
+    return position;
+  }
+  const parts = input_fen.split(/\s+/);
+  if (parts.length !== 6) {
+    validation_errors.push('FEN must contain exactly 6 fields.');
+    return position;
+  }
+
+  const [board, active, castling, ep, halfmove, fullmove] = parts;
+  const parsed = parseFenBoard(board, validation_errors);
+  position.piece_counts.white = parsed.white;
+  position.piece_counts.black = parsed.black;
+  position.board_squares = parsed.boardSquares;
+
+  if (active !== 'w' && active !== 'b') validation_errors.push('FEN active color must be w or b.');
+  position.side_to_move = active === 'w' ? 'white' : active === 'b' ? 'black' : 'unknown';
+
+  if (!(castling === '-' || /^[KQkq]+$/.test(castling))) validation_errors.push('FEN castling rights must be - or a combination of KQkq.');
+  if (castling !== '-' && new Set(castling).size !== castling.length) validation_errors.push('FEN castling rights must not contain duplicates.');
+  position.castling_rights = castling;
+
+  if (!(ep === '-' || /^[a-h][36]$/.test(ep))) validation_errors.push('FEN en passant square must be - or a valid rank 3/rank 6 square.');
+  position.en_passant_square = ep;
+
+  if (!/^\d+$/.test(halfmove)) validation_errors.push('FEN halfmove clock must be a non-negative integer.');
+  else position.halfmove_clock = Number(halfmove);
+
+  if (!/^[1-9]\d*$/.test(fullmove)) validation_errors.push('FEN fullmove number must be a positive integer.');
+  else position.fullmove_number = Number(fullmove);
+
+  position.normalized_fen = parts.join(' ');
+  position.position_hash = crypto.createHash('sha256').update(position.normalized_fen).digest('hex').slice(0, 16);
+  position.material_balance_cp = materialCp(position.piece_counts.white, position.piece_counts.black);
+  position.is_valid = validation_errors.length === 0;
+  return position;
+}
+
+function publicPosition(position) {
+  return {
+    input_fen: position.input_fen,
+    normalized_fen: position.normalized_fen,
+    position_hash: position.position_hash,
+    side_to_move: position.side_to_move,
+    is_valid: position.is_valid,
+    validation_errors: position.validation_errors.slice(),
+    fullmove_number: position.fullmove_number,
+    halfmove_clock: position.halfmove_clock,
+    castling_rights: position.castling_rights,
+    en_passant_square: position.en_passant_square,
+  };
+}
+
+function requestEcho(req) {
+  return {
+    request_id: req.request_id,
+    input_fen: req.input_fen,
+    rating_type: req.rating_type,
+    white_rating_input: req.white_rating_input,
+    black_rating_input: req.black_rating_input,
+    white_level: req.white_level,
+    black_level: req.black_level,
+    white_level_defaulted: req.white_level_defaulted,
+    black_level_defaulted: req.black_level_defaulted,
+    use_ai_requested: req.use_ai,
+    ai_used: false,
+    custom_opening_used: req.custom.opening_used,
+    custom_instructions_used: req.custom.instructions_used,
+  };
+}
+
+function buildSharedCalculations(position, normalizedRequest) {
+  const shared = baseShared(position.side_to_move, normalizedRequest);
+  shared.material_state.white_piece_counts = { ...position.piece_counts.white };
+  shared.material_state.black_piece_counts = { ...position.piece_counts.black };
+  shared.material_state.material_balance_cp = position.material_balance_cp || 0;
+  shared.material_state.material_balance_simple = materialLabel(shared.material_state.material_balance_cp);
+  return shared;
+}
+
+function mockMap(side) {
+  const white = side === 'white';
+  return {
+    hangingAttackable: {
+      piece_square: white ? 'e4' : 'e5',
+      piece: `${side}_pawn`,
+      attackers: [{ from: white ? 'd5' : 'd4', to: white ? 'e4' : 'e5' }],
+      mock: true,
+    },
+    hangingNotAttackable: {
+      piece_square: white ? 'b2' : 'b7',
+      piece: `${side}_pawn`,
+      reason: 'display_placeholder_not_currently_attackable',
+      mock: true,
+    },
+    offset: {
+      from_square: white ? 'd5' : 'd4',
+      target_square: white ? 'e4' : 'e5',
+      piece_count_delta: 0,
+      result: 'equal',
+      mock: true,
+    },
+    advantage: {
+      from_square: white ? 'g1' : 'g8',
+      target_square: white ? 'f3' : 'f6',
+      value_delta: 1,
+      worst_case_line: white ? ['g1f3', 'b8c6', 'f3e5'] : ['g8f6', 'b1c3', 'f6e4'],
+      sentence: `Mock display line: this placeholder trade sequence favours ${white ? 'White' : 'Black'} by about 1 point.`,
+      mock: true,
+    },
+    disadvantage: {
+      from_square: white ? 'd5' : 'd4',
+      target_square: white ? 'e4' : 'e5',
+      value_delta: -3,
+      worst_case_line: white ? ['d5e4', 'f3e4', 'c6e5'] : ['d4e5', 'f6e5', 'c3d5'],
+      sentence: `If you initiate trading on ${white ? 'e4' : 'e5'}, your opponent may come out ahead by about 3 points of material.`,
+      mock: true,
+    },
+    studentThreat: {
+      from: white ? 'e4' : 'e5',
+      to: white ? 'f5' : 'f4',
+      type: 'capture_threat',
+      target_piece: `${white ? 'black' : 'white'}_piece_on_${white ? 'f5' : 'f4'}`,
+      mock: true,
+    },
+    opponentThreat: {
+      from: white ? 'c5' : 'c4',
+      to: white ? 'f2' : 'f7',
+      type: 'pressure_threat',
+      target_piece: `${side}_piece_on_${white ? 'f2' : 'f7'}`,
+      mock: true,
+    },
+    studentPin: {
+      piece_square: white ? 'f3' : 'f6',
+      pinning_piece_square: white ? 'b7' : 'b2',
+      target_behind_piece_square: white ? 'g2' : 'g7',
+      pin_type: 'absolute',
+      pin_line: white ? ['b7', 'c6', 'd5', 'e4', 'f3', 'g2'] : ['b2', 'c3', 'd4', 'e5', 'f6', 'g7'],
+      mock: true,
+    },
+    opponentPin: {
+      piece_square: white ? 'c6' : 'c3',
+      pinning_piece_square: white ? 'b5' : 'b4',
+      target_behind_piece_square: white ? 'e8' : 'e1',
+      pin_type: 'relative',
+      pin_line: white ? ['b5', 'c6', 'd7', 'e8'] : ['b4', 'c3', 'd2', 'e1'],
+      mock: true,
+    },
+  };
+}
+
+function mockCandidates(side, level) {
+  if (level < 5) return 0;
+  const pool = side === 'white'
+    ? [
+        ['e2e4', 'e4', 'claim_centre'],
+        ['g1f3', 'Nf3', 'develop_kingside'],
+        ['d2d4', 'd4', 'challenge_centre'],
+      ]
+    : [
+        ['e7e5', '...e5', 'claim_centre'],
+        ['g8f6', '...Nf6', 'develop_kingside'],
+        ['c7c5', '...c5', 'challenge_centre'],
+      ];
+  const count = level === 5 ? 1 : level === 6 ? 2 : 3;
+  return pool.slice(0, count).map(([uci, san, idea], i) => {
+    const item = {
+      rank: i + 1,
+      uci,
+      san,
+      idea,
+      source: 'mock_not_stockfish',
+      label: `Mock candidate ${i + 1}`,
+      mock: true,
+      real_engine_analysis: false,
+    };
+    if (level >= 9) {
+      item.display = {
+        arrow: { from: uci.slice(0, 2), to: uci.slice(2, 4) },
+        explanation: `L${level} placeholder metadata for UI testing only.`,
+        confidence_label: i === 0 ? 'mock_primary' : 'mock_secondary',
+      };
+    }
+    return item;
+  });
+}
+
+function mockEvaluation(side, shared, position) {
+  const tempo = position.side_to_move === 'white' ? 12 : -12;
+  const whiteCp = Math.max(-999, Math.min(999, (shared.material_state.material_balance_cp || 0) + tempo));
+  return {
+    source: 'mock_stockfish_placeholder',
+    label: 'approximate_mock',
+    cp: side === 'white' ? whiteCp : -whiteCp,
+    wdl: 0,
+    mock: true,
+    real_engine_analysis: false,
+  };
+}
+
+function buildSideOutput(side, normalizedRequest, position, sharedCalculations) {
+  const level = side === 'white' ? normalizedRequest.white_level : normalizedRequest.black_level;
+  const defaulted = side === 'white' ? normalizedRequest.white_level_defaulted : normalizedRequest.black_level_defaulted;
+  const opponent = side === 'white' ? 'black' : 'white';
+  const isSideToMove = position.side_to_move === side;
+  const out = {
+    side,
+    student_side: side,
+    opponent_side: opponent,
+    level: { requested_level: level, delivered_level: level, defaulted },
+    is_side_to_move: isSideToMove,
+    summary: 0,
+    immediate_warning: 0,
+    plan: 0,
+    candidate_moves: 0,
+    evaluation: 0,
+    opening: 0,
+    overlays: {
+      trade_status: {
+        hanging_attackable: [],
+        hanging_not_attackable: [],
+        offset_count: [],
+        advantage_offset_value: 0,
+        disadvantage_offset_value: 0,
+      },
+      threats: { student_threats: [], opponent_threats: [] },
+      pinned_pieces: { student_pinned: [], opponent_pinned: [] },
+    },
+    raw_deterministic: { summary_inputs: [], modules_used: [] },
+  };
+  if (level === 0) return out;
+
+  const m = mockMap(side);
+  out.raw_deterministic.modules_used.push('level_gate');
+  if (level >= 1) out.raw_deterministic.modules_used.push('legal_state_placeholder');
+  if (level >= 2) {
+    out.overlays.trade_status.hanging_attackable.push(m.hangingAttackable);
+    out.overlays.trade_status.hanging_not_attackable.push(m.hangingNotAttackable);
+    if (isSideToMove) {
+      out.immediate_warning = {
+        severity: level >= 4 ? 'medium' : 'low',
+        message: `${side === 'white' ? 'White' : 'Black'} to move: mock warning only. Check the highlighted trade before moving.`,
+        mock: true,
+      };
+    }
+    out.raw_deterministic.modules_used.push('mock_hanging_piece_overlay');
+  }
+  if (level >= 3) {
+    out.overlays.trade_status.offset_count.push(m.offset);
+    out.overlays.trade_status.advantage_offset_value = m.advantage;
+    out.overlays.trade_status.disadvantage_offset_value = m.disadvantage;
+    out.raw_deterministic.modules_used.push('mock_trade_offset_overlay');
+  }
+  if (level >= 4) {
+    out.overlays.threats.student_threats.push(m.studentThreat);
+    out.overlays.threats.opponent_threats.push(m.opponentThreat);
+    out.overlays.pinned_pieces.student_pinned.push(m.studentPin);
+    out.overlays.pinned_pieces.opponent_pinned.push(m.opponentPin);
+    out.raw_deterministic.modules_used.push('mock_threat_overlay', 'mock_pin_overlay');
+    if (isSideToMove) {
+      const sideLabel = side === 'white' ? 'White' : 'Black';
+      out.summary = {
+        text: `${sideLabel} to move. Mock ECE summary: develop, check loose pieces, and compare the highlighted trade map before choosing a move. Material state: ${sharedCalculations.material_state.material_balance_simple}.`,
+        mock: true,
+        deterministic_fallback: true,
+        fen_hash: position.position_hash,
+      };
+      out.plan = {
+        text: `${sideLabel} mock plan: improve the least active piece, secure the king area around ${side === 'white' ? 'g1' : 'g8'}, then challenge the centre if the trade offset is safe.`,
+        steps: ['Check immediate captures and threats.', 'Use the trade overlay before starting exchanges.', 'Prefer a developing move if no forcing move exists.'],
+        mock: true,
+        deterministic_fallback: true,
+      };
+      if (normalizedRequest.custom.opening_used && typeof normalizedRequest.custom.opening === 'string') {
+        out.opening = {
+          requested_opening: normalizedRequest.custom.opening,
+          matched: false,
+          current_line: 0,
+          book_moves: [],
+          side,
+          mock: true,
+        };
+        out.raw_deterministic.modules_used.push('mock_opening_lookup');
+      }
+      out.raw_deterministic.summary_inputs = [
+        `side_to_move:${position.side_to_move}`,
+        `position_hash:${position.position_hash}`,
+        `material:${sharedCalculations.material_state.material_balance_simple}`,
+      ];
+      out.raw_deterministic.modules_used.push('deterministic_summary_text', 'deterministic_plan_text');
+    }
+  }
+  if (level >= 5 && isSideToMove) {
+    out.candidate_moves = mockCandidates(side, level);
+    out.raw_deterministic.modules_used.push('mock_candidate_moves');
+  }
+  if (level >= 8) {
+    out.evaluation = mockEvaluation(side, sharedCalculations, position);
+    out.raw_deterministic.modules_used.push('mock_evaluation');
+  }
+  out.raw_deterministic.modules_used = uniq(out.raw_deterministic.modules_used);
+  return out;
+}
+
+function anyMockCandidateOrEval(sideOutputs) {
+  return ['white', 'black'].some((side) => {
+    const o = sideOutputs[side];
+    return o && typeof o === 'object' && ((Array.isArray(o.candidate_moves) && o.candidate_moves.length) || (o.evaluation && o.evaluation.mock));
+  });
+}
+
+function collectModules(output) {
+  const modules = ['fen_lite_parser', 'shared_material_counter', 'mock_display_framework'];
+  for (const side of ['white', 'black']) {
+    const sideOutput = output.side_outputs[side];
+    if (sideOutput && sideOutput.raw_deterministic) {
+      modules.push(...sideOutput.raw_deterministic.modules_used.map((m) => `${side}:${m}`));
+    }
+  }
+  return uniq(modules);
+}
+
+function buildEceV1Output(input) {
+  const started = process.hrtime.bigint();
+  const output = baseOutput();
+  let req;
+
+  try {
+    req = normalizeEceRequest(input);
+    output.request_echo = requestEcho(req);
+    output.diagnostics.warnings.push(...req.normalization_warnings);
+    if (req.use_ai === 1) {
+      output.diagnostics.warnings.push('AI was requested but is not implemented; deterministic fallback was used.');
+      output.unavailable.ai = 'requested_but_not_implemented_framework_only';
+    }
+    if (req.custom.instructions_used) {
+      output.diagnostics.warnings.push('Custom instructions were supplied but deterministic framework output ignored their content.');
+    }
+    output.unavailable.opening = req.custom.opening_used ? 'framework_mock_opening_only' : 'custom_opening_0';
+  } catch (err) {
+    output.diagnostics.status = 'invalid_request';
+    output.diagnostics.errors = err.errors && err.errors.length ? err.errors.slice() : [err.message || 'Invalid request.'];
+    output.diagnostics.warnings = err.warnings && err.warnings.length ? err.warnings.slice() : [];
+    if (err.normalized) output.request_echo = requestEcho(err.normalized);
+    output.position = {
+      input_fen: err.normalized ? err.normalized.input_fen : '',
+      normalized_fen: '',
+      position_hash: '',
+      side_to_move: 'unknown',
+      is_valid: false,
+      validation_errors: ['request_invalid'],
+      fullmove_number: 0,
+      halfmove_clock: 0,
+      castling_rights: '',
+      en_passant_square: '',
+    };
+    output.side_outputs.white = 0;
+    output.side_outputs.black = 0;
+    output.diagnostics.elapsed_ms = elapsedMs(started);
+    return output;
+  }
+
+  try {
+    const position = parseFenLite(req.input_fen);
+    output.position = publicPosition(position);
+    if (!position.is_valid) {
+      output.diagnostics.status = 'invalid_fen';
+      output.diagnostics.errors = position.validation_errors.slice();
+      output.shared_calculations = baseShared(position.side_to_move, req);
+      output.side_outputs.white = 0;
+      output.side_outputs.black = 0;
+      output.diagnostics.modules_used = ['fen_lite_parser'];
+      output.diagnostics.elapsed_ms = elapsedMs(started);
+      return output;
+    }
+
+    output.shared_calculations = buildSharedCalculations(position, req);
+    output.side_outputs.white = buildSideOutput('white', req, position, output.shared_calculations);
+    output.side_outputs.black = buildSideOutput('black', req, position, output.shared_calculations);
+    output.diagnostics.warnings.push('ECE v1 framework output uses mock deterministic coaching data for display testing.');
+    if (anyMockCandidateOrEval(output.side_outputs)) {
+      output.diagnostics.warnings.push('Stockfish candidate/evaluation data is deterministic mock placeholder, not real analysis.');
+    }
+    output.diagnostics.status = req.credential_field_ignored || req.custom.instructions_used || req.use_ai === 1 ? 'partial' : 'ok';
+    output.diagnostics.modules_used = collectModules(output);
+    output.diagnostics.elapsed_ms = elapsedMs(started);
+    return output;
+  } catch (err) {
+    output.diagnostics.status = 'internal_error';
+    output.diagnostics.errors = [err.message || 'Internal framework error.'];
+    output.side_outputs.white = 0;
+    output.side_outputs.black = 0;
+    output.diagnostics.elapsed_ms = elapsedMs(started);
+    return output;
+  }
+}
+
+function sampleInput() {
+  return {
+    request: {
+      request_id: 'req_001',
+      input_fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+      rating_type: 'unknown',
+      white_rating_input: 0,
+      black_rating_input: 0,
+      white_level: 4,
+      black_level: 2,
+      use_ai: 0,
+      custom: { opening: 0, instructions: 0 },
+    },
+  };
+}
+
+function assertTest(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function l0Empty(o) {
+  const t = o.overlays.trade_status;
+  const th = o.overlays.threats;
+  const p = o.overlays.pinned_pieces;
+  return o.summary === 0 && o.immediate_warning === 0 && o.plan === 0 &&
+    o.candidate_moves === 0 && o.evaluation === 0 && o.opening === 0 &&
+    t.hanging_attackable.length === 0 && t.hanging_not_attackable.length === 0 &&
+    t.offset_count.length === 0 && t.advantage_offset_value === 0 && t.disadvantage_offset_value === 0 &&
+    th.student_threats.length === 0 && th.opponent_threats.length === 0 &&
+    p.student_pinned.length === 0 && p.opponent_pinned.length === 0;
+}
+
+function outputContainsForbiddenWords(output) {
+  const text = JSON.stringify(output).toLowerCase();
+  return FORBIDDEN_OUTPUT_WORDS.some((word) => text.includes(word));
+}
+
+function runSelfTests() {
+  const tests = [
+    ['valid FEN returns position.is_valid = true', () => {
+      assertTest(buildEceV1Output(sampleInput()).position.is_valid === true, 'Expected valid FEN.');
+    }],
+    ['invalid FEN returns diagnostics.status = invalid_fen', () => {
+      const input = sampleInput();
+      input.request.input_fen = 'not-a-fen';
+      assertTest(buildEceV1Output(input).diagnostics.status === 'invalid_fen', 'Expected invalid_fen.');
+    }],
+    ['side-to-move is derived correctly from FEN', () => {
+      assertTest(buildEceV1Output(sampleInput()).position.side_to_move === 'black', 'Expected black to move.');
+    }],
+    ['missing levels default to 10', () => {
+      const input = sampleInput();
+      delete input.request.white_level;
+      delete input.request.black_level;
+      const out = buildEceV1Output(input);
+      assertTest(out.request_echo.white_level === 10 && out.request_echo.black_level === 10, 'Levels did not default to 10.');
+      assertTest(out.request_echo.white_level_defaulted && out.request_echo.black_level_defaulted, 'Default flags missing.');
+    }],
+    ['explicit level 0 remains 0', () => {
+      const input = sampleInput();
+      input.request.white_level = 0;
+      input.request.black_level = 0;
+      const out = buildEceV1Output(input);
+      assertTest(out.request_echo.white_level === 0 && out.request_echo.black_level === 0, 'Explicit 0 not preserved.');
+      assertTest(out.side_outputs.white.level.delivered_level === 0 && out.side_outputs.black.level.delivered_level === 0, 'Delivered 0 not preserved.');
+    }],
+    ['L0 side output has no coaching overlays/text', () => {
+      const input = sampleInput();
+      input.request.white_level = 0;
+      const out = buildEceV1Output(input);
+      assertTest(l0Empty(out.side_outputs.white), 'White L0 contains coaching data.');
+    }],
+    ['output contains both side_outputs.white and side_outputs.black', () => {
+      const out = buildEceV1Output(sampleInput());
+      assertTest(Object.prototype.hasOwnProperty.call(out.side_outputs, 'white'), 'Missing white output.');
+      assertTest(Object.prototype.hasOwnProperty.call(out.side_outputs, 'black'), 'Missing black output.');
+    }],
+    ['use_ai = 1 does not call AI and includes warning', () => {
+      const input = sampleInput();
+      input.request.use_ai = 1;
+      const out = buildEceV1Output(input);
+      assertTest(out.request_echo.ai_used === false, 'AI should not be used.');
+      assertTest(out.diagnostics.warnings.some((w) => w.includes('AI was requested')), 'Missing AI warning.');
+    }],
+    ['no output contains api_key, token, or secret', () => {
+      const input = sampleInput();
+      input.request.api_key = 'abc';
+      input.request.access_token = 'def';
+      input.request.custom.instructions = 'hide this secret content';
+      assertTest(outputContainsForbiddenWords(buildEceV1Output(input)) === false, 'Output contains forbidden credential word.');
+    }],
+    ['White L4 / Black L2 gating is independent', () => {
+      const input = sampleInput();
+      input.request.input_fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1';
+      input.request.white_level = 4;
+      input.request.black_level = 2;
+      const out = buildEceV1Output(input);
+      const white = out.side_outputs.white;
+      const black = out.side_outputs.black;
+      assertTest(white.summary !== 0 && white.plan !== 0, 'White L4 side to move missing text.');
+      assertTest(white.overlays.threats.student_threats.length > 0, 'White L4 missing threats.');
+      assertTest(white.overlays.pinned_pieces.student_pinned.length > 0, 'White L4 missing pins.');
+      assertTest(black.summary === 0 && black.plan === 0, 'Black should not receive summary/plan.');
+      assertTest(black.overlays.threats.student_threats.length === 0, 'Black L2 must not receive L4 threats.');
+      assertTest(black.overlays.pinned_pieces.student_pinned.length === 0, 'Black L2 must not receive L4 pins.');
+    }],
+  ];
+
+  const results = [];
+  let passed = 0;
+  let failed = 0;
+  for (const [name, fn] of tests) {
+    try {
+      fn();
+      passed += 1;
+      results.push({ name, status: 'PASS' });
+    } catch (err) {
+      failed += 1;
+      results.push({ name, status: 'FAIL', error: err.message });
+    }
+  }
+
+  const summary = { total: tests.length, passed, failed, ok: failed === 0, results };
+  const lines = [`ECE v1 self-tests: ${passed}/${tests.length} passed.`];
+  for (const r of results) lines.push(`${r.status}: ${r.name}${r.error ? ` — ${r.error}` : ''}`);
+  lines.push(failed ? 'SELF_TEST_FAILED' : 'SELF_TEST_PASSED');
+  console.log(lines.join('\n'));
+  return summary;
+}
+
+function printJson(value) {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function usage() {
+  process.stderr.write('Usage:\n  node ece-v1-framework.js\n  node ece-v1-framework.js --self-test\n  node ece-v1-framework.js --input sample.json\n  node ece-v1-framework.js --sample-input\n');
+  process.exitCode = 1;
+}
+
+function runCli(argv) {
+  const args = argv.slice(2);
+  if (args.includes('--self-test')) {
+    const summary = runSelfTests();
+    if (!summary.ok) process.exitCode = 1;
+    return;
+  }
+  if (args.includes('--sample-input')) {
+    printJson(sampleInput());
+    return;
+  }
+  const inputIndex = args.indexOf('--input');
+  if (inputIndex !== -1) {
+    const filePath = args[inputIndex + 1];
+    if (!filePath) return usage();
+    try {
+      printJson(buildEceV1Output(JSON.parse(fs.readFileSync(filePath, 'utf8'))));
+    } catch (err) {
+      process.stderr.write(`Failed to read input JSON: ${err.message}\n`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (args.length) return usage();
+  printJson(buildEceV1Output(sampleInput()));
+}
+
+module.exports = {
+  buildEceV1Output,
+  normalizeEceRequest,
+  parseFenLite,
+  normalizeLevel,
+  buildSharedCalculations,
+  buildSideOutput,
+  runSelfTests,
+};
+
+if (require.main === module) runCli(process.argv);
