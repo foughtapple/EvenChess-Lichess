@@ -4,6 +4,7 @@ import type { Key } from '@lichess-org/chessground/types';
 import {
   type EvenChessTtsConfig,
   type EvenChessTtsItem,
+  normalizeEvenChessTtsText,
   shownTtsText,
   speakEvenChessTts,
   ttsSafetyReason,
@@ -15,10 +16,13 @@ import { apiArgs, transformWikiHtml, wikiBooksUrl } from 'lib/wikiBooks';
 import type RoundController from '../ctrl';
 import {
   evenChessTestGroundFullFen,
-  requestEvenChessTestGroundFullGameReview,
+  requestEvenChessTestGroundOverlayForPosition,
+  requestEvenChessTestGroundPotentialMoveRefund,
   requestEvenChessTestGroundPotentialMoves,
+  requestEvenChessTestGroundPositionEcs,
   requestEvenChessTestGroundProposedMove,
 } from '../evenchessTestGround';
+import { renderEvenChessPostGameReviewPanel } from '../evenchessReview';
 import type {
   EvenChessBoardVisual,
   EvenChessCoachTextSnapshot,
@@ -31,11 +35,14 @@ import type {
   EvenChessPotentialMoveKind,
   EvenChessPotentialMoveReveal,
   EvenChessPotentialMoveState,
+  EvenChessPositionEcsCard,
+  EvenChessPositionEcsState,
   EvenChessProposedMoveCard,
   EvenChessProposedMoveState,
   EvenChessTestGroundState,
   RoundData,
 } from '../interfaces';
+import * as util from '../util';
 
 export interface EvenChessBoardSnapshot {
   gameId: string;
@@ -49,6 +56,8 @@ const maxVisuals = 16;
 const maxBoardShapes = 8;
 const maxBoardOverlayVisuals = 64;
 const maxTtsAutoDelaySeconds = 30;
+const potentialMovePostOpponentMoveCooldownMillis = 1000;
+const potentialMoveOpponentRefundGraceMillis = 3000;
 const openingWikiCache = new Map<string, string>();
 const openingWikiPending = new Map<string, Promise<string>>();
 const evalInfoCache = new WeakMap<RoundData, Map<string, EvenChessEvalInfo>>();
@@ -57,10 +66,15 @@ const defaultDisplayToggles: EvenChessDisplayToggles = {
   coachCards: true,
   boardVisuals: true,
 };
+const displayStoragePrefix = 'evenchess.display.';
 const squareVisualPattern = /^([a-h][1-8]):\s*(.+)$/i;
 const arrowVisualPattern = /^([a-h][1-8])-([a-h][1-8]):\s*(.+)$/i;
 const files = 'abcdefgh';
 const squareSize = 12.5;
+const boardOverlayAlignmentBindings = new WeakMap<
+  HTMLElement,
+  { update: () => void; cleanup: () => void }
+>();
 const overlayColours = {
   studentThreat: '#22c55e',
   opponentThreat: '#ef4444',
@@ -110,7 +124,7 @@ interface EvenChessBoardOverlayIndicator {
   colour: string;
   tooltip: string;
   position: 'top_right' | 'bottom_right' | 'top_left' | 'bottom_left' | 'centre';
-  icon?: 'shield' | 'pin';
+  icon?: 'shield';
 }
 
 interface EvenChessBoardOverlayHighlight {
@@ -146,7 +160,7 @@ interface EvenChessParsedEvalInfo {
   lossWhite?: number;
 }
 
-type EvenChessEvalScope = 'live' | 'proposed';
+type EvenChessEvalScope = 'live' | 'proposed' | 'position' | 'potential';
 
 interface EvenChessCoachDisplay {
   card: EvenChessCoachCard;
@@ -156,7 +170,25 @@ interface EvenChessCoachDisplay {
 interface EvenChessAutoTtsState {
   scheduledKey?: string;
   spokenKey?: string;
+  lastBaseKey?: string;
+  lastAdditionKey?: string;
+  stableBaseKey?: string;
   timer?: ReturnType<typeof setTimeout>;
+}
+
+interface EvenChessLiveTtsItem extends EvenChessTtsItem {
+  baseText: string;
+  autoAddedText?: string;
+}
+
+export interface EvenChessAutoTtsDeltaInput {
+  previousFullText?: string;
+  currentFullText: string;
+  previousBaseText?: string;
+  currentBaseText?: string;
+  previousAdditionText?: string;
+  currentAdditionText?: string;
+  stableBaseText?: string;
 }
 
 export type EvenChessProposedMoveSelection =
@@ -374,6 +406,7 @@ export function renderEvenChessBoardOverlay(ctrl: RoundController): VNode | unde
     'div.evenchess-board-overlay',
     {
       key: `evenchess-board-overlay-${current.gameId}-${orientation}`,
+      hook: evenChessBoardOverlayAlignmentHook,
       attrs: {
         'data-evenchess-board-overlay': 'live',
         'data-orientation': orientation,
@@ -399,6 +432,94 @@ export function renderEvenChessBoardOverlay(ctrl: RoundController): VNode | unde
       ...items.indicators.map(indicator => renderBoardOverlayIndicator(indicator, orientation)),
     ],
   );
+}
+
+const evenChessBoardOverlayAlignmentHook = {
+  insert: (vnode: VNode) => installEvenChessBoardOverlayAlignment(vnode.elm as HTMLElement),
+  postpatch: (_old: VNode, vnode: VNode) => installEvenChessBoardOverlayAlignment(vnode.elm as HTMLElement),
+  destroy: (vnode: VNode) => {
+    const overlay = vnode.elm as HTMLElement;
+    const binding = boardOverlayAlignmentBindings.get(overlay);
+    if (binding) {
+      binding.cleanup();
+      boardOverlayAlignmentBindings.delete(overlay);
+    }
+  },
+};
+
+function installEvenChessBoardOverlayAlignment(overlay: HTMLElement): void {
+  const existing = boardOverlayAlignmentBindings.get(overlay);
+  if (existing) {
+    existing.update();
+    return;
+  }
+
+  let frame = 0;
+  const update = () => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        alignEvenChessBoardOverlayToBoard(overlay);
+      });
+    } else {
+      alignEvenChessBoardOverlayToBoard(overlay);
+    }
+  };
+
+  const host = overlay.parentElement;
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined' && host
+      ? new ResizeObserver(update)
+      : undefined;
+  if (resizeObserver && host) {
+    resizeObserver.observe(host);
+    const board = host.querySelector('cg-board') as HTMLElement | null;
+    if (board) resizeObserver.observe(board);
+  }
+  if (typeof window !== 'undefined') window.addEventListener('resize', update);
+  boardOverlayAlignmentBindings.set(overlay, {
+    update,
+    cleanup: () => {
+      if (frame && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function')
+        window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      if (typeof window !== 'undefined') window.removeEventListener('resize', update);
+    },
+  });
+  update();
+}
+
+function alignEvenChessBoardOverlayToBoard(overlay: HTMLElement): void {
+  const host = overlay.parentElement;
+  const board = host?.querySelector('cg-board') as HTMLElement | null | undefined;
+  if (!host || !board) {
+    resetEvenChessBoardOverlayAlignment(overlay);
+    return;
+  }
+
+  const hostRect = host.getBoundingClientRect();
+  const boardRect = board.getBoundingClientRect();
+  if (!hostRect.width || !hostRect.height || !boardRect.width || !boardRect.height) {
+    resetEvenChessBoardOverlayAlignment(overlay);
+    return;
+  }
+
+  overlay.style.left = `${fixedPx(boardRect.left - hostRect.left)}px`;
+  overlay.style.top = `${fixedPx(boardRect.top - hostRect.top)}px`;
+  overlay.style.width = `${fixedPx(boardRect.width)}px`;
+  overlay.style.height = `${fixedPx(boardRect.height)}px`;
+  overlay.style.right = 'auto';
+  overlay.style.bottom = 'auto';
+}
+
+function resetEvenChessBoardOverlayAlignment(overlay: HTMLElement): void {
+  overlay.style.left = '';
+  overlay.style.top = '';
+  overlay.style.width = '';
+  overlay.style.height = '';
+  overlay.style.right = '';
+  overlay.style.bottom = '';
 }
 
 export function renderableEvenChessBoardOverlayItems(
@@ -436,10 +557,17 @@ export function clearEvenChessLiveOverlay(
   reason: string,
   ply: number,
   boardStateKey: string,
+  redraw?: () => void,
 ): void {
   const live = data.evenchess?.live;
   if (!live) return;
+  const now = Date.now();
   const retainedCoachText = coachTextSnapshotFromOverlay(data, live) ?? data.evenchess?.coachText;
+  const potentialMoves = data.evenchess?.potentialMoves;
+  const cooldownUntil =
+    reason === 'move-played' && evenChessDataPlayerTurn(data) ? now + potentialMovePostOpponentMoveCooldownMillis : potentialMoves?.cooldownUntil;
+  refundRecentOpponentPotentialMove(data, potentialMoves, displayUsedLevel(data, live), now, redraw);
+  if (cooldownUntil && cooldownUntil > now && redraw) setTimeout(redraw, cooldownUntil - now);
   const clear: EvenChessClearInstruction = {
     gameId: live.gameId || data.game.id,
     ply,
@@ -455,11 +583,29 @@ export function clearEvenChessLiveOverlay(
       stale: true,
       clear: [clear],
     },
-    potentialMoves: data.evenchess?.potentialMoves
+    potentialMoves: potentialMoves || cooldownUntil
       ? {
           status: 'idle',
-          consumedByKind: data.evenchess.potentialMoves.consumedByKind,
-          updatedAt: Date.now(),
+          consumedByKind: potentialMoves?.consumedByKind,
+          quotaByKind: potentialMoves?.quotaByKind,
+          adminUnlimitedTokens: potentialMoves?.adminUnlimitedTokens,
+          cooldownUntil,
+          updatedAt: now,
+        }
+      : undefined,
+    positionEcs: data.evenchess?.positionEcs
+      ? {
+          status: 'idle',
+          consumed: data.evenchess.positionEcs.consumed,
+          accrued: data.evenchess.positionEcs.accrued,
+          available: data.evenchess.positionEcs.available,
+          interval: data.evenchess.positionEcs.interval,
+          ownMoves: data.evenchess.positionEcs.ownMoves,
+          positionEcsId: data.evenchess.positionEcs.positionEcsId,
+          contextStatus: data.evenchess.positionEcs.contextStatus,
+          expiresAtMs: data.evenchess.positionEcs.expiresAtMs,
+          endpoint: data.evenchess.positionEcs.endpoint,
+          updatedAt: now,
         }
       : undefined,
     proposedMove: data.evenchess?.proposedMove
@@ -467,10 +613,91 @@ export function clearEvenChessLiveOverlay(
           status: 'idle',
           consumed: data.evenchess.proposedMove.consumed,
           quota: data.evenchess.proposedMove.quota,
-          updatedAt: Date.now(),
+          updatedAt: now,
         }
       : undefined,
   };
+}
+
+function evenChessDataPlayerTurn(data: RoundData): boolean {
+  const activeColor = data.game.player;
+  return (activeColor === 'white' || activeColor === 'black') && activeColor === data.player.color;
+}
+
+function refundRecentOpponentPotentialMove(
+  data: RoundData,
+  state: EvenChessPotentialMoveState | undefined,
+  usedLevel: number,
+  now: number,
+  redraw?: () => void,
+): void {
+  if (state?.refundableKind !== 'opponent') return;
+  if (!state.refundableKey || typeof state.refundableUntil !== 'number') return;
+  if (state.refundableUntil < now) return;
+  requestPotentialMoveRefund(data, state.refundableKey, 'opponent', usedLevel, redraw);
+}
+
+function requestPotentialMoveRefund(
+  data: RoundData,
+  key: string,
+  kind: EvenChessPotentialMoveKind,
+  usedLevel: number,
+  redraw?: () => void,
+): void {
+  void requestEvenChessTestGroundPotentialMoveRefund(data, key, kind, usedLevel).then(result => {
+    if (result.error) return;
+    applyPotentialMoveRefund(data, key, kind, result, redraw);
+  });
+}
+
+function applyPotentialMoveRefund(
+  data: RoundData,
+  key: string,
+  kind: EvenChessPotentialMoveKind,
+  result: { consumed?: number; quota?: number; adminUnlimitedTokens?: boolean },
+  redraw?: () => void,
+): void {
+  const state = data.evenchess?.potentialMoves;
+  if (!state) return;
+  const nextState: EvenChessPotentialMoveState = {
+    ...state,
+    consumedByKind: {
+      ...state.consumedByKind,
+      [kind]: typeof result.consumed === 'number' ? result.consumed : potentialMoveConsumedCount(state, kind),
+    },
+    quotaByKind:
+      typeof result.quota === 'number'
+        ? {
+            ...state.quotaByKind,
+            [kind]: result.quota,
+          }
+        : state.quotaByKind,
+    adminUnlimitedTokens: result.adminUnlimitedTokens ?? state.adminUnlimitedTokens,
+    updatedAt: Date.now(),
+  };
+  if (state.refundableKey === key && state.refundableKind === kind) {
+    nextState.refundableKey = undefined;
+    nextState.refundableKind = undefined;
+    nextState.refundableUntil = undefined;
+  }
+  data.evenchess = {
+    ...data.evenchess,
+    potentialMoves: nextState,
+  };
+  redraw?.();
+}
+
+function refundStaleOpponentPotentialMove(
+  ctrl: RoundController,
+  key: string,
+  kind: EvenChessPotentialMoveKind,
+  usedLevel: number,
+  requestedAt: number,
+  cached?: boolean,
+): void {
+  if (kind !== 'opponent' || cached) return;
+  if (Date.now() > requestedAt + potentialMoveOpponentRefundGraceMillis) return;
+  requestPotentialMoveRefund(ctrl.data, key, kind, usedLevel, () => ctrl.redraw());
 }
 
 function coachTextSnapshotFromOverlay(
@@ -491,6 +718,7 @@ function coachTextSnapshotFromOverlay(
 }
 
 export function applyEvenChessLiveOverlay(data: RoundData, overlay: EvenChessLiveOverlay): void {
+  const hadDisplayToggles = Boolean(data.evenchess?.display?.toggles);
   initializeEvenChessDisplayForGame(data);
 
   const clearOnMismatch = overlay.gameId !== data.game.id;
@@ -519,25 +747,47 @@ export function applyEvenChessLiveOverlay(data: RoundData, overlay: EvenChessLiv
         }
       : overlay;
 
-  const usedLevel = Math.max(
-    data.evenchess?.display?.usedLevel ?? 0,
-    payloadUsedLevel(sanitized),
-    selectedEvenChessDisplayLevel(data),
+  const setLevel = setLevelForData(data);
+  const serverUsedLevel =
+    typeof sanitized.display?.usedLevel === 'number' && Number.isFinite(sanitized.display.usedLevel)
+      ? clampLevel(sanitized.display.usedLevel, setLevel)
+      : undefined;
+  const serverToggles = persistedEvenChessDisplayTogglesFromPayload({ display: sanitized.display }, setLevel);
+  const mergedToggles = serverToggles
+    ? hadDisplayToggles
+      ? mergePersistedEvenChessDisplayToggles(displayToggles(data), serverToggles, setLevel)
+      : serverToggles
+    : displayToggles(data);
+  const usedLevel = clampLevel(
+    Math.max(
+      data.evenchess?.display?.usedLevel ?? 0,
+      serverUsedLevel ?? 0,
+      payloadUsedLevel(sanitized),
+      selectedEvenChessDisplayLevel(data),
+    ),
+    setLevel,
   );
   const proposedMove = assistanceSyncedProposedMoveState(data.evenchess?.proposedMove, sanitized);
   const potentialMoves = assistanceSyncedPotentialMoveState(data.evenchess?.potentialMoves, sanitized);
+  const positionEcs = assistanceSyncedPositionEcsState(data.evenchess?.positionEcs, sanitized);
 
   data.evenchess = {
     ...data.evenchess,
     live: sanitized,
     proposedMove,
     potentialMoves,
+    positionEcs,
     display: {
       ...data.evenchess?.display,
+      ...(typeof sanitized.display?.setLevel === 'number'
+        ? { setLevel: clampLevel(sanitized.display.setLevel, 10) }
+        : {}),
+      ...(sanitized.display?.opponent ? { opponent: sanitized.display.opponent } : {}),
       usedLevel,
-      toggles: displayToggles(data),
+      toggles: mergedToggles,
     },
   };
+  writeLocalEvenChessDisplayState(data);
 }
 
 function assistanceSyncedProposedMoveState(
@@ -550,6 +800,7 @@ function assistanceSyncedProposedMoveState(
     ...(state ?? { status: 'idle' as const }),
     consumed: usage.consumed,
     quota: usage.quota,
+    adminUnlimitedTokens: Boolean(usage.adminUnlimitedTokens),
   };
 }
 
@@ -558,13 +809,40 @@ function assistanceSyncedPotentialMoveState(
   overlay: EvenChessLiveOverlay,
 ): EvenChessPotentialMoveState | undefined {
   const usage = overlay.stale ? undefined : overlay.assistance?.potentialMoves;
-  if (!usage?.consumedByKind) return state;
+  if (!usage?.consumedByKind && !usage?.quotaByKind) return state;
   return {
     ...(state ?? { status: 'idle' as const }),
     consumedByKind: {
       ...state?.consumedByKind,
       ...usage.consumedByKind,
     },
+    quotaByKind: {
+      ...state?.quotaByKind,
+      ...usage.quotaByKind,
+    },
+    adminUnlimitedTokens: Boolean(usage.adminUnlimitedTokens),
+  };
+}
+
+function assistanceSyncedPositionEcsState(
+  state: EvenChessPositionEcsState | undefined,
+  overlay: EvenChessLiveOverlay,
+): EvenChessPositionEcsState | undefined {
+  const usage = overlay.stale ? undefined : overlay.assistance?.positionEcs;
+  if (!usage) return state;
+  return {
+    ...(state ?? { status: 'idle' as const }),
+    consumed: usage.consumed,
+    accrued: usage.accrued,
+    quota: usage.quota,
+    available: usage.available,
+    interval: usage.interval,
+    ownMoves: usage.ownMoves,
+    adminUnlimitedTokens: Boolean(usage.adminUnlimitedTokens),
+    positionEcsId: usage.positionEcsId,
+    contextStatus: usage.status,
+    expiresAtMs: usage.expiresAtMs,
+    endpoint: usage.endpoint,
   };
 }
 
@@ -576,8 +854,13 @@ export function initializeEvenChessDisplayForGame(data: RoundData): void {
   const setLevel = setLevelForData(data);
   const preferredUsedLevel = preferredUsedLevelForData(data, setLevel);
   const defaultFeatureToggles = defaultFeatureTogglesForData(data);
-  const stored = display?.toggles;
-  const appliedLevel = clampLevel(stored?.appliedLevel ?? display?.usedLevel ?? preferredUsedLevel, setLevel);
+  const localDisplay = readLocalEvenChessDisplayState(gameId, setLevel);
+  const stored = display?.toggles ?? localDisplay?.toggles;
+  const localUsedLevel = localDisplay?.usedLevel;
+  const appliedLevel = clampLevel(
+    stored?.appliedLevel ?? display?.usedLevel ?? localUsedLevel ?? preferredUsedLevel,
+    setLevel,
+  );
 
   data.evenchess = {
     ...data.evenchess,
@@ -586,7 +869,7 @@ export function initializeEvenChessDisplayForGame(data: RoundData): void {
       initializedForGameId: gameId,
       preferredUsedLevel,
       setLevel,
-      usedLevel: Math.max(display?.usedLevel ?? 0, preferredUsedLevel, appliedLevel),
+      usedLevel: Math.max(display?.usedLevel ?? 0, localUsedLevel ?? 0, preferredUsedLevel, appliedLevel),
       toggles: {
         ...defaultDisplayToggles,
         ...stored,
@@ -614,12 +897,17 @@ export function liveCardTtsItem(
   card: EvenChessCoachCard,
   overlay: EvenChessLiveOverlay,
   isPlayerTurn: boolean,
-): EvenChessTtsItem {
+  coachResultTexts: string[] = [],
+): EvenChessLiveTtsItem {
+  const baseText = liveCardTtsDisplayedText(card);
+  const additionText = shownTtsText('', '', coachResultTexts);
+  const displayedText = shownTtsText('', baseText, additionText ? [additionText] : []);
+
   return {
     id: card.id,
     surface: 'live',
-    displayedText: shownTtsText(card.title, card.body),
-    text: card.ttsText,
+    displayedText,
+    text: displayedText,
     auditId: card.auditId || overlay.auditId,
     serverAuthorized: card.serverAuthorized && overlay.serverAuthorized,
     approvedDisplayPayload: card.approvedDisplayPayload,
@@ -627,7 +915,31 @@ export function liveCardTtsItem(
     isPlayerTurn,
     rawStockfishLine: card.rawStockfishLine,
     hiddenDebugData: card.hiddenDebugData,
+    baseText,
+    autoAddedText: additionText || undefined,
   };
+}
+
+function liveCardTtsDisplayedText(card: EvenChessCoachCard): string {
+  return shownTtsText('', card.body);
+}
+
+export function evenChessAutoTtsDeltaText(input: EvenChessAutoTtsDeltaInput): string {
+  const currentFull = normalizeEvenChessTtsText(input.currentFullText);
+  const previousFull = normalizeEvenChessTtsText(input.previousFullText ?? '');
+  const currentBase = normalizeEvenChessTtsText(input.currentBaseText ?? currentFull);
+  const previousBase = normalizeEvenChessTtsText(input.previousBaseText ?? '');
+  const currentAddition = normalizeEvenChessTtsText(input.currentAdditionText ?? '');
+  const previousAddition = normalizeEvenChessTtsText(input.previousAdditionText ?? '');
+  const stableBase = normalizeEvenChessTtsText(input.stableBaseText ?? '');
+
+  if (!currentFull || currentFull === previousFull) return '';
+  if (currentAddition && currentAddition !== previousAddition) return currentAddition;
+  if (previousAddition && !currentAddition && stableBase && currentBase === stableBase) return '';
+  if (currentBase && currentBase !== previousBase) return currentBase;
+  if (previousFull && currentFull.startsWith(`${previousFull} `))
+    return currentFull.slice(previousFull.length).trim();
+  return currentFull;
 }
 
 export function renderEvenChessOverlay(ctrl: RoundController): VNode | undefined {
@@ -636,19 +948,18 @@ export function renderEvenChessOverlay(ctrl: RoundController): VNode | undefined
   const testGround = ctrl.data.evenchess?.testGround;
   const ttsConfig = evenChessTtsConfigForData(ctrl.data);
   const proposedOverlay = activeProposedMoveOverlay(ctrl, current);
-  const overlay = proposedOverlay ?? liveOverlay;
+  const positionOverlay = proposedOverlay ? undefined : activePositionEcsOverlay(ctrl, current);
+  const potentialEvalOverlay = proposedOverlay || positionOverlay ? undefined : activePotentialEvalOverlay(ctrl.data, liveOverlay, current);
+  const overlay = proposedOverlay ?? positionOverlay ?? liveOverlay;
+  const evalOverlay = proposedOverlay ?? positionOverlay ?? potentialEvalOverlay;
   const displayCurrent = proposedOverlay ? proposedMoveBoardSnapshot(current, proposedOverlay) : current;
-  const evalScope: EvenChessEvalScope = proposedOverlay ? 'proposed' : 'live';
+  const evalScope: EvenChessEvalScope = proposedOverlay ? 'proposed' : positionOverlay ? 'position' : potentialEvalOverlay ? 'potential' : 'live';
   const coachDisplay = displayableEvenChessCoachDisplay(ctrl, overlay, displayCurrent);
   const visuals = displayableEvenChessVisuals(ctrl.data, overlay, displayCurrent);
   const featureSelectionKey = displayFeatureSelectionKey(ctrl.data);
   const staleReason = overlayStaleReason(overlay, displayCurrent);
 
   if (!coachDisplay && !visuals.length && !shouldShowEvenChessShell(ctrl)) return undefined;
-  if (proposedOverlay && liveOverlay) {
-    evenChessEvalInfo(ctrl.data, liveOverlay, current, 'evalBar', 'live');
-    evenChessEvalInfo(ctrl.data, liveOverlay, current, 'evalNumbers', 'live');
-  }
 
   return hl(
     'aside.evenchess-live',
@@ -669,18 +980,16 @@ export function renderEvenChessOverlay(ctrl: RoundController): VNode | undefined
       },
     },
     [
-      renderCoachColumn(ctrl, testGround, ttsConfig, coachDisplay, overlay, displayCurrent, evalScope),
-      renderEvenChessEvalBar(ctrl.data, overlay, displayCurrent, evalScope),
-      renderLevelColumn(ctrl, liveOverlay),
+      renderCoachColumn(ctrl, testGround, ttsConfig, coachDisplay, overlay, evalOverlay, displayCurrent, evalScope),
+      renderEvenChessEvalBar(ctrl.data, evalOverlay, displayCurrent, evalScope),
+      renderWikiColumn(ctrl),
     ],
   );
 }
 
-function renderLevelColumn(ctrl: RoundController, overlay: EvenChessLiveOverlay | undefined): VNode {
-  return hl('div.evenchess-live__level-column', [
-    renderOpeningWikiBookCard(ctrl),
-    renderLevelControlCard(ctrl, overlay),
-  ]);
+function renderWikiColumn(ctrl: RoundController): VNode | undefined {
+  const wiki = renderOpeningWikiBookCard(ctrl);
+  return wiki ? hl('div.evenchess-live__wiki-column', [wiki]) : undefined;
 }
 
 function renderOpeningWikiBookCard(ctrl: RoundController): VNode | undefined {
@@ -720,60 +1029,63 @@ function renderOpeningWikiBookCard(ctrl: RoundController): VNode | undefined {
   );
 }
 
-function renderLevelControlCard(
-  ctrl: RoundController,
-  overlay: EvenChessLiveOverlay | undefined,
-): VNode {
+function renderCoachLevelControls(ctrl: RoundController): VNode {
   const setLevel = setLevelForData(ctrl.data);
-  const selectedLevel = selectedEvenChessDisplayLevel(ctrl.data);
-  const usedLevel = displayUsedLevel(ctrl.data, overlay);
+  const selectedLevel = appliedEvenChessDisplayLevel(ctrl.data);
 
-  return hl('section.evenchess-live__card.evenchess-live__card--levels', [
-    hl('div.evenchess-live__head', [
-      hl('strong.evenchess-live__label', 'EvenChess Levels'),
-      hl('span.evenchess-live__head-actions', [
-        hl('span.evenchess-live__level', `Set Level: ${setLevel}`),
-        hl('span.evenchess-live__used', `Used Level: ${usedLevel}`),
-      ]),
-    ]),
-    hl('label.evenchess-live__apply', [
-      hl('span', 'Apply up to'),
-      hl(
-        'select',
-        {
-          props: {
-            value: String(selectedLevel),
+  return hl('div.evenchess-live__coach-levels', [
+    hl('div.evenchess-live__level-control-row', [
+      hl('label.evenchess-live__apply', [
+        hl(
+          'select',
+          {
+            props: {
+              value: String(selectedLevel),
+            },
+            attrs: {
+              'aria-label': 'Apply EvenChess features up to level',
+            },
+            hook: bind('change', (event: Event) => {
+              event.stopPropagation();
+              applyLevelFromControl(
+                ctrl,
+                Number.parseInt((event.currentTarget as HTMLSelectElement).value, 10),
+              );
+            }),
           },
-          attrs: {
-            'aria-label': 'Apply EvenChess features up to level',
-          },
-          hook: bind('change', (event: Event) => {
-            event.stopPropagation();
-            applyLevelFromControl(
-              ctrl,
-              Number.parseInt((event.currentTarget as HTMLSelectElement).value, 10),
+          evenChessLevels.map(level => {
+            const disabled = level.level > setLevel;
+            return hl(
+              'option',
+              {
+                class: {
+                  'is-disabled': disabled,
+                },
+                attrs: {
+                  value: String(level.level),
+                  selected: level.level === selectedLevel,
+                  disabled,
+                  ...(disabled
+                    ? {
+                        'aria-disabled': 'true',
+                        title: `Unavailable above Set Level ${setLevel}`,
+                      }
+                    : {}),
+                },
+              },
+              `Apply up to: L${level.level} ${level.name}`,
             );
           }),
-        },
-        evenChessLevels.map(level =>
-          hl(
-            'option',
-            {
-              attrs: {
-                value: String(level.level),
-                selected: level.level === selectedLevel,
-                disabled: level.level > setLevel,
-              },
-            },
-            `L${level.level} ${level.name}`,
-          ),
         ),
-      ),
+      ]),
+      hl('details.evenchess-live__level-toggles', [
+        hl('summary.evenchess-live__level-toggles-summary', [hl('span', 'Level toggles')]),
+        hl(
+          'div.evenchess-live__level-list.evenchess-live__level-list--inside',
+          evenChessLevels.map(level => renderLevelRow(ctrl, level, setLevel)),
+        ),
+      ]),
     ]),
-    hl(
-      'div.evenchess-live__level-list',
-      evenChessLevels.map(level => renderLevelRow(ctrl, level, setLevel)),
-    ),
   ]);
 }
 
@@ -786,6 +1098,8 @@ function renderEvenChessEvalBar(
   if (!featureEnabled(data, 'evalBar')) return undefined;
 
   const evalInfo = evenChessEvalInfo(data, overlay, current, 'evalBar', scope);
+  if (evalInfo.state !== 'ready') return undefined;
+
   const blackHeight = 100 - evalInfo.whitePercent;
 
   return hl(
@@ -866,68 +1180,30 @@ function renderCoachColumn(
   ttsConfig: EvenChessTtsConfig | undefined,
   coachDisplay: EvenChessCoachDisplay | undefined,
   overlay: EvenChessLiveOverlay | undefined,
+  evalOverlay: EvenChessLiveOverlay | undefined,
   current: EvenChessBoardSnapshot,
   evalScope: EvenChessEvalScope,
 ): VNode {
-  const potentialMoves = renderPotentialMovePanel(ctrl, overlay, current);
-  const proposedMove = renderProposedMovePanel(ctrl);
-  const evalStrip = renderCoachEvalStrip(ctrl.data, overlay, current, evalScope);
-  const potentialFooter = renderPotentialMoveCoachFooter(ctrl.data, overlay, current);
+  const evalStrip = renderCoachEvalStrip(ctrl.data, evalOverlay, current, evalScope);
+  const coachResults = renderCoachInlineResults(ctrl, overlay, current);
+  const coachResultTtsTexts = coachInlineResultTtsTexts(ctrl);
+  const levelControls = renderCoachLevelControls(ctrl);
   return hl('div.evenchess-live__coach-column', [
     coachDisplay
-      ? renderCoachCard(ctrl, coachDisplay.overlay, ttsConfig, coachDisplay.card, evalStrip, potentialFooter)
-      : renderCoachShell(testGround, evalStrip, potentialFooter),
-    renderFullGameReviewPanel(ctrl),
-    potentialMoves,
-    proposedMove,
+      ? renderCoachCard(
+	          ctrl,
+	          coachDisplay.overlay,
+	          ttsConfig,
+	          coachDisplay.card,
+	          current,
+	          evalStrip,
+	          levelControls,
+	          coachResults,
+	          coachResultTtsTexts,
+	        )
+	      : renderCoachShell(ctrl, testGround, overlay, evalStrip, levelControls, coachResults),
+    renderEvenChessPostGameReviewPanel(ctrl),
   ]);
-}
-
-function renderFullGameReviewPanel(ctrl: RoundController): VNode | undefined {
-  const replaying = (ctrl as { replaying?: () => boolean }).replaying;
-  if (typeof replaying !== 'function' || !replaying.call(ctrl)) return undefined;
-  const state = ctrl.data.evenchess?.testGround;
-  const loading = state?.status === 'loading' && state.message.toLowerCase().includes('review');
-  return hl('section.evenchess-live__card.evenchess-live__card--proposed-control', [
-    hl('div.evenchess-live__proposed-action', [
-      hl(
-        'button.evenchess-live__proposed-button',
-        {
-          attrs: {
-            type: 'button',
-            disabled: loading,
-            'aria-label': 'Run EvenChess full-game level 10 review',
-          },
-          hook: bind(
-            'click',
-            (event: Event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void requestEvenChessTestGroundFullGameReview(ctrl, 10);
-            },
-            undefined,
-            false,
-          ),
-        },
-        loading
-          ? [
-              renderEvenChessInlineSpinner('Running EvenChess full-game level 10 review'),
-              hl('span', 'Running review'),
-            ]
-          : 'Run L10 Review',
-      ),
-      hl('span.evenchess-live__proposed-status', loading ? 'Processing full game' : 'Full game'),
-    ]),
-  ]);
-}
-
-function renderEvenChessInlineSpinner(label: string): VNode {
-  return hl('span.evenchess-live__spinner', {
-    attrs: {
-      role: 'status',
-      'aria-label': label,
-    },
-  });
 }
 
 function renderCoachCard(
@@ -935,11 +1211,22 @@ function renderCoachCard(
   overlay: EvenChessLiveOverlay,
   ttsConfig: EvenChessTtsConfig | undefined,
   card: EvenChessCoachCard,
+  current: EvenChessBoardSnapshot,
   evalStrip: VNode | undefined,
-  potentialFooter: VNode | undefined,
+  levelControls: VNode,
+  coachResults: VNode[],
+  coachResultTtsTexts: string[] = [],
 ): VNode {
-  const ttsItem = liveCardTtsItem(card, overlay, evenChessPlayerTurn(ctrl));
+  const ttsItem = liveCardTtsItem(card, overlay, evenChessPlayerTurn(ctrl), coachResultTtsTexts);
   scheduleEvenChessAutoTts(ctrl.data, ttsConfig, ttsItem);
+  const setLevel = setLevelForData(ctrl.data);
+  const usedLevel = displayUsedLevel(ctrl.data, overlay);
+  const opponentLevels = opponentLevelsForData(ctrl.data);
+  const coachActions = renderCoachActionControls(ctrl, overlay, current, [
+    renderTtsButton(ttsConfig, ttsItem),
+    renderTtsAutoToggle(ctrl, ttsConfig, ttsItem),
+    renderEvenChessDrawToggle(ctrl),
+  ]);
 
   return hl(
     'section.evenchess-live__card.evenchess-live__card--coach',
@@ -947,6 +1234,11 @@ function renderCoachCard(
       attrs: {
         'data-feature': card.featureKey,
         'data-audit-id': card.auditId,
+        'data-evenchess-tts-item-id': ttsItem.id,
+        'data-evenchess-tts-audit-id': ttsItem.auditId,
+        'data-evenchess-tts-text': ttsItem.displayedText,
+        'data-evenchess-tts-server-authorized': String(ttsItem.serverAuthorized),
+        'data-evenchess-tts-approved-display-payload': String(ttsItem.approvedDisplayPayload),
       },
     },
     [
@@ -954,71 +1246,192 @@ function renderCoachCard(
       hl('div.evenchess-live__head', [
         hl('strong.evenchess-live__label', 'EvenChess Coach'),
         hl('span.evenchess-live__head-actions', [
-          renderLevelBadge(card.level),
-          renderTtsButton(ttsConfig, ttsItem),
-          hl('span.evenchess-live__audit', `Audit ${card.auditId}`),
+          renderLevelSummary(setLevel, usedLevel, opponentLevels),
         ]),
       ]),
-      hl('h2.evenchess-live__title', card.title),
-      hl('p.evenchess-live__body', card.body),
-      potentialFooter,
+      coachActions,
+      levelControls,
+      renderCoachTextArea(card.title, card.body, coachResults),
     ],
   );
 }
 
-function renderProposedMovePanel(ctrl: RoundController): VNode {
-  const selection = readEvenChessProposedMoveSelection(ctrl);
-  const state = ctrl.data.evenchess?.proposedMove;
-  const quota = proposedMoveQuotaForUsedLevel(selection.usedLevel);
-  const consumed = proposedMoveConsumedCount(state);
-  const active = visibleProposedMoveCard(ctrl, selection);
-  const disabled = quota < 1 || state?.status === 'loading';
-  const usedText = quota > 0 ? `Used ${Math.min(consumed, quota)}/${quota}` : 'Level 5+';
-  const message =
-    state?.status === 'loading'
-      ? 'Checking'
-      : state?.status === 'error'
-        ? state.message
-        : quota < 1
-          ? 'Level 5+'
-          : active?.cached
-            ? `Cached ${usedText}`
-            : usedText;
-
-  return hl('div.evenchess-live__proposed-stack', [
-    hl('section.evenchess-live__card.evenchess-live__card--proposed-control', [
-      hl('div.evenchess-live__proposed-action', [
-        hl(
-          'button.evenchess-live__proposed-button',
-          {
-            attrs: {
-              type: 'button',
-              disabled,
-              'aria-label': 'Request EvenChess proposed move preview',
-            },
-            hook: bind(
-              'click',
-              (event: Event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                requestEvenChessProposedMovePreview(ctrl);
-              },
-              undefined,
-              false,
-            ),
-          },
-          'Proposed Move',
-        ),
-        message ? hl('span.evenchess-live__proposed-status', message) : undefined,
-      ]),
-    ]),
-    active ? renderProposedMoveCard(active) : undefined,
+function renderCoachTextArea(title: string, body: string, results: VNode[] = []): VNode {
+  return hl('div.evenchess-live__coach-text', [
+    hl('h2.evenchess-live__title', title),
+    hl('p.evenchess-live__body', body),
+    ...results,
   ]);
 }
 
-function renderProposedMoveCard(card: EvenChessProposedMoveCard): VNode {
+function renderCoachActionControls(
+  ctrl: RoundController,
+  overlay: EvenChessLiveOverlay | undefined,
+  current: EvenChessBoardSnapshot,
+  toolButtons: VNode[] = [],
+): VNode {
+  const positionModel = positionEcsButtonModel(ctrl.data, overlay, current, ctrl);
+  const potentialModel = potentialMoveButtonModel(ctrl.data, overlay, current, ctrl);
+  const proposedModel = proposedMoveButtonModel(ctrl);
+  const sharedStatus = coachActionSharedStatus(ctrl.data, positionModel, potentialModel, proposedModel);
+
+  return hl('div.evenchess-live__coach-actions', [
+    hl('div.evenchess-live__coach-actions-row.evenchess-live__coach-actions-row--tools', [
+      ...toolButtons,
+    ]),
+    hl('div.evenchess-live__coach-actions-row.evenchess-live__coach-actions-row--assistance', [
+      renderPositionEcsAction(ctrl, overlay, current, positionModel, true),
+      hl('div.evenchess-live__coach-action-group.evenchess-live__coach-action-group--potential', [
+        renderPotentialMoveAction(ctrl, potentialModel, true),
+      ]),
+      renderProposedMoveAction(ctrl, proposedModel, true),
+    ]),
+    sharedStatus ? hl('div.evenchess-live__action-status', sharedStatus) : undefined,
+  ]);
+}
+
+function coachActionSharedStatus(
+  data: RoundData,
+  positionModel: EvenChessPositionEcsButton,
+  potentialModel: EvenChessPotentialMoveButton,
+  proposedModel: EvenChessProposedMoveButton,
+): string | undefined {
+  const now = Date.now();
+  const position = data.evenchess?.positionEcs;
+  const potential = data.evenchess?.potentialMoves;
+  const proposed = data.evenchess?.proposedMove;
+  const candidates: { updatedAt: number; text: string }[] = [];
+
+  if (position?.status === 'loading')
+    candidates.push({ updatedAt: position.updatedAt ?? now, text: 'Ask AI: Asking AI' });
+  else if (position?.status === 'error' && position.message)
+    candidates.push({ updatedAt: position.updatedAt ?? now, text: `Ask AI: ${position.message}` });
+  else if (position?.status === 'ready' && positionModel.active)
+    candidates.push({ updatedAt: position.updatedAt ?? now, text: `Ask AI: ${positionModel.message}` });
+
+  if (potential?.status === 'loading')
+    candidates.push({ updatedAt: potential.updatedAt ?? now, text: `Potential Moves: ${potential.message ?? 'Checking'}` });
+  else if (potential?.status === 'error' && potential.message) {
+    if (!isPotentialMoveTurnMessage(potential.message))
+      candidates.push({ updatedAt: potential.updatedAt ?? now, text: `Potential Moves: ${potential.message}` });
+  } else if (potential?.status === 'ready' && potentialModel.active)
+    candidates.push({ updatedAt: potential.updatedAt ?? now, text: 'Potential Moves shown' });
+
+  if (proposed?.status === 'loading')
+    candidates.push({ updatedAt: proposed.updatedAt ?? now, text: 'Proposed move check: Checking' });
+  else if (proposed?.status === 'error' && proposed.message)
+    candidates.push({ updatedAt: proposed.updatedAt ?? now, text: `Proposed move check: ${proposed.message}` });
+  else if (proposed?.status === 'ready' && proposedModel.active)
+    candidates.push({ updatedAt: proposed.updatedAt ?? now, text: `Proposed move check: ${proposedModel.message}` });
+
+  return candidates.sort((a, b) => b.updatedAt - a.updatedAt)[0]?.text;
+}
+
+function renderCoachInlineResults(
+  ctrl: RoundController,
+  overlay: EvenChessLiveOverlay | undefined,
+  current: EvenChessBoardSnapshot,
+): VNode[] {
+  return [
+    renderProposedMoveCoachResult(ctrl),
+    renderPotentialMoveCoachFooter(ctrl.data, overlay, current),
+  ].filter((node): node is VNode => Boolean(node));
+}
+
+export function coachInlineResultTtsTexts(ctrl: RoundController): string[] {
+  return [
+    proposedMoveCoachTtsText(visibleProposedMoveCard(ctrl, readEvenChessProposedMoveSelection(ctrl))),
+  ].filter((text): text is string => Boolean(text));
+}
+
+function proposedMoveCoachTtsText(card: EvenChessProposedMoveCard | undefined): string | undefined {
+  if (!card?.serverAuthorized || !card.approvedDisplayPayload) return undefined;
+  const title = card.title.trim().toLowerCase().startsWith('proposed move')
+    ? card.title
+    : `Proposed Move ${card.title}`;
+  return shownTtsText('', title, [card.body]);
+}
+
+interface EvenChessProposedMoveButton {
+  active: boolean;
+  disabled: boolean;
+  message: string;
+}
+
+function proposedMoveButtonModel(ctrl: RoundController): EvenChessProposedMoveButton {
+  const selection = readEvenChessProposedMoveSelection(ctrl);
+  const state = ctrl.data.evenchess?.proposedMove;
+  const quota = state?.quota ?? proposedMoveQuotaForUsedLevel(selection.usedLevel);
+  const adminUnlimited = isUnlimitedAssistanceQuota(quota, state?.adminUnlimitedTokens);
+  const consumed = proposedMoveConsumedCount(state);
+  const active = visibleProposedMoveCard(ctrl, selection);
+  const disabled = quota < 1 || state?.status === 'loading';
+  const usedText = quota > 0 ? assistanceUsageLabel(consumed, quota, adminUnlimited) : 'Level 5+';
+  const message =
+    state?.status === 'loading'
+	      ? 'Checking'
+	      : state?.status === 'error'
+	        ? (state.message ?? 'Proposed move check unavailable')
+	        : quota < 1
+	          ? 'Level 5+'
+	          : active?.cached
+	            ? `Cached ${usedText}`
+	            : usedText;
+
+  return {
+    active: Boolean(active),
+    disabled,
+    message,
+  };
+}
+
+function renderProposedMoveAction(
+  ctrl: RoundController,
+  model: EvenChessProposedMoveButton = proposedMoveButtonModel(ctrl),
+  showStatus = true,
+): VNode {
+  return hl('div.evenchess-live__coach-action-group.evenchess-live__coach-action-group--proposed', [
+    hl('div.evenchess-live__proposed-action', [
+      hl(
+        `button.evenchess-live__proposed-button${model.active ? '.is-active' : ''}`,
+        {
+          attrs: {
+            type: 'button',
+            disabled: model.disabled,
+            'aria-pressed': String(model.active),
+            'aria-label': 'Request EvenChess proposed move preview',
+          },
+          hook: bind(
+            'click',
+            (event: Event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              requestEvenChessProposedMovePreview(ctrl);
+            },
+            undefined,
+            false,
+          ),
+        },
+        'Proposed move check',
+      ),
+      showStatus && model.message ? hl('span.evenchess-live__proposed-status', model.message) : undefined,
+    ]),
+  ]);
+}
+
+function renderProposedMoveCoachResult(card: EvenChessProposedMoveCard | undefined): VNode | undefined;
+function renderProposedMoveCoachResult(ctrl: RoundController): VNode | undefined;
+function renderProposedMoveCoachResult(input: RoundController | EvenChessProposedMoveCard | undefined): VNode | undefined {
+  const card =
+    input && 'key' in input
+      ? input
+      : input
+        ? visibleProposedMoveCard(input, readEvenChessProposedMoveSelection(input))
+        : undefined;
+  if (!card) return undefined;
+
   return hl(
-    'section.evenchess-live__card.evenchess-live__card--proposed-result',
+    'div.evenchess-live__coach-result.evenchess-live__coach-result--proposed',
     {
       attrs: {
         'data-evenchess-proposed-move': card.moveUci,
@@ -1026,28 +1439,46 @@ function renderProposedMoveCard(card: EvenChessProposedMoveCard): VNode {
       },
     },
     [
-      hl('div.evenchess-live__head', [
-        hl('strong.evenchess-live__label', 'Proposed Move'),
-        hl('span.evenchess-live__head-actions', [renderLevelBadge(card.level)]),
-      ]),
-      hl('h2.evenchess-live__title', card.title),
-      hl('p.evenchess-live__body', card.body),
+      hl('strong.evenchess-live__coach-result-label', 'Proposed Move'),
+      hl('h3.evenchess-live__coach-result-title', card.title),
+      hl('p.evenchess-live__coach-result-body', card.body),
     ],
   );
 }
 
-function renderPotentialMovePanel(
+function renderPositionEcsAction(
   ctrl: RoundController,
   overlay: EvenChessLiveOverlay | undefined,
   current: EvenChessBoardSnapshot,
+  model: EvenChessPositionEcsButton = positionEcsButtonModel(ctrl.data, overlay, current, ctrl),
+  showStatus = true,
 ): VNode {
-  const opponent = potentialMoveButtonModel(ctrl.data, overlay, current, 'opponent');
-  const player = potentialMoveButtonModel(ctrl.data, overlay, current, 'player');
-
-  return hl('section.evenchess-live__card.evenchess-live__card--proposed-control', [
-    hl('div.evenchess-live__head', [hl('strong.evenchess-live__label', 'Potential Moves')]),
-    renderPotentialMoveAction(ctrl, opponent),
-    renderPotentialMoveAction(ctrl, player),
+  return hl('div.evenchess-live__coach-action-group.evenchess-live__coach-action-group--position-ecs', [
+    hl('div.evenchess-live__proposed-action', [
+      hl(
+        `button.evenchess-live__proposed-button${model.active ? '.is-active' : ''}`,
+        {
+          attrs: {
+            type: 'button',
+            disabled: model.disabled,
+            'aria-pressed': String(model.active),
+            'aria-label': 'Ask EvenChess AI about this position',
+          },
+          hook: bind(
+            'click',
+            (event: Event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              requestEvenChessPositionEcs(ctrl);
+            },
+            undefined,
+            false,
+          ),
+        },
+        'Ask AI',
+      ),
+      showStatus ? hl('span.evenchess-live__proposed-status', model.message) : undefined,
+    ]),
   ]);
 }
 
@@ -1081,6 +1512,7 @@ function potentialMoveRevealTexts(reveal: EvenChessPotentialMoveReveal): string[
     .map(card => `${card.title}: ${card.body}`.trim());
   const visualTexts = reveal.visuals
     .filter(visual => visual.serverAuthorized && visual.approvedDisplayPayload)
+    .filter(visual => !isAcceptedEvalVisual(visual))
     .map(visual => boardLabelText(visual.label));
   return [...cardTexts, ...visualTexts].filter(Boolean).slice(0, 3);
 }
@@ -1088,14 +1520,24 @@ function potentialMoveRevealTexts(reveal: EvenChessPotentialMoveReveal): string[
 interface EvenChessPotentialMoveButton {
   kind: EvenChessPotentialMoveKind;
   label: string;
-  quota: number;
-  consumed: number;
   active: boolean;
   disabled: boolean;
   message: string;
 }
 
-function renderPotentialMoveAction(ctrl: RoundController, model: EvenChessPotentialMoveButton): VNode {
+interface EvenChessPositionEcsButton {
+  quota: number;
+  consumed: number;
+  available: number;
+  interval: number;
+  ownMoves: number;
+  active: boolean;
+  disabled: boolean;
+  message: string;
+  adminUnlimitedTokens: boolean;
+}
+
+function renderPotentialMoveAction(ctrl: RoundController, model: EvenChessPotentialMoveButton, showStatus = true): VNode {
   return hl('div.evenchess-live__proposed-action', [
     hl(
       `button.evenchess-live__proposed-button${model.active ? '.is-active' : ''}`,
@@ -1111,7 +1553,7 @@ function renderPotentialMoveAction(ctrl: RoundController, model: EvenChessPotent
           (event: Event) => {
             event.preventDefault();
             event.stopPropagation();
-            requestEvenChessPotentialMoves(ctrl, model.kind);
+            requestEvenChessPotentialMoves(ctrl, potentialMoveKindForCurrentTurn(ctrl));
           },
           undefined,
           false,
@@ -1119,7 +1561,7 @@ function renderPotentialMoveAction(ctrl: RoundController, model: EvenChessPotent
       },
       model.label,
     ),
-    hl('span.evenchess-live__proposed-status', model.message),
+    showStatus ? hl('span.evenchess-live__proposed-status', model.message) : undefined,
   ]);
 }
 
@@ -1132,7 +1574,13 @@ function evalInfoCacheKey(
   if (scope === 'proposed' && overlay) {
     return `${feature}:proposed:${overlay.gameId}:${overlay.ply}:${overlay.boardStateKey}`;
   }
-  return `${feature}:live:${current.gameId}`;
+  if (scope === 'position' && overlay) {
+    return `${feature}:position:${overlay.gameId}:${overlay.ply}:${overlay.boardStateKey}:${overlay.auditId}`;
+  }
+  if (scope === 'potential' && overlay) {
+    return `${feature}:potential:${overlay.gameId}:${overlay.ply}:${overlay.boardStateKey}:${overlay.auditId}`;
+  }
+  return `${feature}:live:${current.gameId}:${current.ply}:${current.boardStateKey}`;
 }
 
 function cachedEvalInfo(data: RoundData, key: string): EvenChessEvalInfo | undefined {
@@ -1158,10 +1606,8 @@ function evenChessEvalInfo(
   }
   const cacheKey = evalInfoCacheKey(overlay, current, feature, scope);
   const cached = cachedEvalInfo(data, cacheKey);
-  const liveCached =
-    scope === 'proposed' ? cachedEvalInfo(data, evalInfoCacheKey(undefined, current, feature, 'live')) : undefined;
   if (overlayVisualStaleReason(overlay, current) || !overlay) {
-    return cached ?? liveCached ?? { state: 'unavailable', label: '', whitePercent: 50 };
+    return cached ?? { state: 'unavailable', label: '', whitePercent: 50 };
   }
 
   const evalVisual = (overlay.visuals ?? [])
@@ -1171,12 +1617,12 @@ function evenChessEvalInfo(
   const structuredEval = evalVisual ? evalInfoFromVisual(evalVisual) : undefined;
   const evalCardText = (overlay.cards ?? [])
     .filter(card => cardRenderable(card, overlay))
-    .filter(card => isDeepEvalText(`${card.featureKey} ${card.title} ${card.body}`))
+    .filter(card => isPositionEvalText(`${card.featureKey} ${card.title} ${card.body}`))
     .map(card => `${card.title} ${card.body}`)
     .pop();
   const evalText = structuredEval ? undefined : evalVisual?.label ?? evalCardText;
   const parsed = structuredEval ?? (evalText ? parseEvalText(evalText) : undefined);
-  if (!parsed) return cached ?? liveCached ?? { state: 'unavailable', label: '', whitePercent: 50 };
+  if (!parsed) return cached ?? { state: 'unavailable', label: '', whitePercent: 50 };
 
   const ready: EvenChessEvalInfo = {
     state: 'ready',
@@ -1260,13 +1706,16 @@ function isEvalText(text: string): boolean {
   );
 }
 
-function isDeepEvalText(text: string): boolean {
+function isPositionEvalText(text: string): boolean {
   const normalized = text.toLowerCase();
   if (!isEvalText(normalized)) return false;
   return (
-    normalized.includes('ece.eval.deep') ||
-    normalized.includes('deep') ||
-    normalized.includes('advanced') ||
+    normalized.includes('ece.eval.position') ||
+    normalized.includes('ece.eval.potential') ||
+    normalized.includes('position_ecs') ||
+    normalized.includes('position ecs') ||
+    normalized.includes('potential_ecs') ||
+    normalized.includes('potential ecs') ||
     normalized.includes('stockfish') ||
     normalized.includes('cached_lichess_eval') ||
     normalized.includes('lichess eval') ||
@@ -1337,7 +1786,7 @@ function finiteNumber(value: unknown): number | undefined {
 function isAcceptedEvalVisual(visual: EvenChessBoardVisual): boolean {
   if (evalInfoFromVisual(visual)) return true;
   const text = `${visual.featureKey} ${visual.label}`;
-  if (!isDeepEvalText(text)) return false;
+  if (!isPositionEvalText(text)) return false;
   if (visual.featureKey === 'ece.eval') {
     const parsed = parseEvalText(visual.label);
     if (parsed?.cp === 0 && parsed.mate === undefined) return false;
@@ -1366,6 +1815,7 @@ function clampPercent(value: number): number {
 function applyLevelFromControl(ctrl: RoundController, level: number): void {
   const previousUsedLevel = displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live);
   applyEvenChessLevelPreset(ctrl.data, level);
+  persistEvenChessDisplayState(ctrl);
   requestOverlayRefreshIfUsedLevelRaised(ctrl, previousUsedLevel);
   ctrl.updateEvenChessAutoShapes();
   ctrl.redraw();
@@ -1374,15 +1824,142 @@ function applyLevelFromControl(ctrl: RoundController, level: number): void {
 function setFeatureFromControl(ctrl: RoundController, key: EvenChessLevelFeatureKey, enabled: boolean): void {
   const previousUsedLevel = displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live);
   setEvenChessLevelFeature(ctrl.data, key, enabled);
+  persistEvenChessDisplayState(ctrl);
   requestOverlayRefreshIfUsedLevelRaised(ctrl, previousUsedLevel);
   ctrl.updateEvenChessAutoShapes();
   ctrl.redraw();
 }
 
 function requestOverlayRefreshIfUsedLevelRaised(ctrl: RoundController, previousUsedLevel: number): void {
-  if (displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live) > previousUsedLevel) {
+  const nextUsedLevel = displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live);
+  if (nextUsedLevel > previousUsedLevel) {
+    persistEvenChessUsedLevelRaise(ctrl, nextUsedLevel);
     ctrl.requestEvenChessOverlayRefresh();
   }
+}
+
+function persistEvenChessUsedLevelRaise(ctrl: RoundController, usedLevel: number): void {
+  const display = ctrl.data.evenchess?.display;
+  if (!display || display.setLevel === undefined || ctrl.data.player?.spectator) return;
+
+  const level = clampLevel(usedLevel, setLevelForData(ctrl.data));
+  writeLocalEvenChessDisplayState(ctrl.data, level);
+  if (level <= 0 && (display.preferredUsedLevel ?? 0) <= 0) return;
+
+  const url = `/evenchess/live/used-level?gameId=${encodeURIComponent(ctrl.data.game.id)}&level=${level}`;
+  void fetch(url, {
+    method: 'POST',
+    cache: 'no-cache',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  })
+    .then(response => (response.ok ? response.json() : undefined))
+    .then(payload => applyPersistedEvenChessDisplayResponse(ctrl, payload))
+    .catch(() => undefined);
+}
+
+function persistEvenChessDisplayState(ctrl: RoundController): void {
+  const display = ctrl.data.evenchess?.display;
+  if (!display || display.setLevel === undefined || ctrl.data.player?.spectator) return;
+
+  const toggles = displayToggles(ctrl.data);
+  const body = {
+    gameId: ctrl.data.game.id,
+    usedLevel: displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live),
+    toggles: {
+      coachCards: toggles.coachCards,
+      boardVisuals: toggles.boardVisuals,
+      appliedLevel: toggles.appliedLevel,
+      levelFeatures: toggles.levelFeatures ?? {},
+    },
+  };
+  writeLocalEvenChessDisplayState(ctrl.data, body.usedLevel);
+
+  void fetch('/evenchess/live/display-state', {
+    method: 'POST',
+    cache: 'no-cache',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: JSON.stringify(body),
+  })
+    .then(response => (response.ok ? response.json() : undefined))
+    .then(payload => applyPersistedEvenChessDisplayResponse(ctrl, payload))
+    .catch(() => undefined);
+}
+
+function applyPersistedEvenChessDisplayResponse(ctrl: RoundController, payload: any): void {
+  const display = ctrl.data.evenchess?.display;
+  if (!display) return;
+
+  const setLevel = setLevelForData(ctrl.data);
+  const serverUsedLevel =
+    typeof payload?.usedLevel === 'number' && Number.isFinite(payload.usedLevel)
+      ? clampLevel(payload.usedLevel, setLevel)
+      : undefined;
+  const serverToggles = persistedEvenChessDisplayTogglesFromPayload(payload, setLevel);
+  if (serverUsedLevel === undefined && !serverToggles) return;
+
+  ctrl.data.evenchess = {
+    ...ctrl.data.evenchess,
+    display: {
+      ...display,
+      usedLevel:
+        serverUsedLevel === undefined
+          ? display.usedLevel
+          : Math.max(display.usedLevel ?? 0, serverUsedLevel),
+      toggles: serverToggles
+        ? mergePersistedEvenChessDisplayToggles(displayToggles(ctrl.data), serverToggles, setLevel)
+        : display.toggles,
+    },
+  };
+  writeLocalEvenChessDisplayState(ctrl.data);
+}
+
+export function mergePersistedEvenChessDisplayToggles(
+  current: EvenChessDisplayToggles,
+  persisted: EvenChessDisplayToggles,
+  setLevel: number,
+): EvenChessDisplayToggles {
+  return {
+    coachCards: current.coachCards,
+    boardVisuals: current.boardVisuals,
+    appliedLevel: clampLevel(current.appliedLevel ?? persisted.appliedLevel ?? 0, setLevel),
+    levelFeatures: {
+      ...(persisted.levelFeatures ?? {}),
+      ...(current.levelFeatures ?? {}),
+    },
+  };
+}
+
+function persistedEvenChessDisplayTogglesFromPayload(
+  payload: any,
+  setLevel: number,
+): EvenChessDisplayToggles | undefined {
+  const toggles = payload?.display?.toggles;
+  if (!toggles || typeof toggles !== 'object') return undefined;
+
+  const levelFeaturesPayload = toggles.levelFeatures;
+  const levelFeatureValues: EvenChessLevelFeatureToggles = {};
+  if (levelFeaturesPayload && typeof levelFeaturesPayload === 'object') {
+    for (const feature of levelFeatures) {
+      const value = levelFeaturesPayload[feature.key];
+      if (typeof value === 'boolean') levelFeatureValues[feature.key] = value;
+    }
+  }
+
+  return {
+    coachCards: toggles.coachCards !== false,
+    boardVisuals: toggles.boardVisuals !== false,
+    appliedLevel: clampLevel(Number(toggles.appliedLevel ?? 0), setLevel),
+    levelFeatures: levelFeatureValues,
+  };
 }
 
 export function syncEvenChessCoachTextSnapshot(ctrl: RoundController): boolean {
@@ -1429,6 +2006,23 @@ export function potentialMoveQuotaForUsedLevel(
   return 0;
 }
 
+export function positionEcsIntervalForUsedLevel(usedLevel: number): number {
+  if (usedLevel >= 10) return 4;
+  if (usedLevel >= 9) return 5;
+  if (usedLevel >= 8) return 6;
+  if (usedLevel >= 7) return 7;
+  if (usedLevel >= 6) return 8;
+  if (usedLevel >= 5) return 9;
+  if (usedLevel >= 4) return 10;
+  return 0;
+}
+
+export function positionEcsAccruedForUsedLevel(usedLevel: number, ownMoves: number): number {
+  const interval = positionEcsIntervalForUsedLevel(usedLevel);
+  if (interval < 1) return 0;
+  return Math.floor(Math.max(0, ownMoves) / interval);
+}
+
 export function readEvenChessProposedMoveSelection(ctrl: RoundController): EvenChessProposedMoveSelection {
   const ply = ctrl.ply;
   const fen = evenChessTestGroundFullFen(ctrl.data, ply, ctrl.stepAt(ply).fen);
@@ -1472,7 +2066,7 @@ export function readEvenChessProposedMoveSelection(ctrl: RoundController): EvenC
   const arrow = greenArrows[0]!;
   const orig = arrow.orig as Key;
   const dest = arrow.dest as Key;
-  const legalDests = ctrl.chessground?.state.movable.dests?.get(orig) ?? [];
+  const legalDests = legalDestsForProposedMove(ctrl, orig);
   if (!legalDests.includes(dest))
     return {
       kind: 'error',
@@ -1497,6 +2091,12 @@ export function readEvenChessProposedMoveSelection(ctrl: RoundController): EvenC
   const moveUci = `${orig}${dest}`;
   const key = proposedMoveCacheKey(turnKey, moveUci);
   return { kind: 'move', orig, dest, moveUci, key, turnKey, usedLevel, ply, fen };
+}
+
+function legalDestsForProposedMove(ctrl: RoundController, orig: Key): Key[] {
+  const boardDests = ctrl.chessground?.state.movable.dests?.get(orig);
+  if (boardDests?.length) return boardDests;
+  return util.parsePossibleMoves(ctrl.data.possibleMoves).get(orig) ?? [];
 }
 
 export function syncEvenChessProposedMovePreview(ctrl: RoundController): boolean {
@@ -1541,12 +2141,14 @@ export function requestEvenChessPotentialMoves(
   const usedLevel = displayUsedLevel(ctrl.data, overlay);
   const quota = potentialMoveQuotaForUsedLevel(usedLevel, kind);
   const now = Date.now();
+  const refundableUntil = kind === 'opponent' ? now + potentialMoveOpponentRefundGraceMillis : undefined;
+  const turnAllowed = potentialMoveTurnAllowed(ctrl, kind);
 
-  if (kind === 'player' && !evenChessPlayerTurn(ctrl)) {
+  if (!turnAllowed) {
     setPotentialMoveState(ctrl, {
       ...ctrl.data.evenchess?.potentialMoves,
       status: 'error',
-      message: 'Available on your turn',
+      message: potentialMoveTurnMessage(kind),
       activeKey: undefined,
       activeKind: kind,
       updatedAt: now,
@@ -1595,6 +2197,9 @@ export function requestEvenChessPotentialMoves(
       activeKey: key,
       activeKind: kind,
       active: { ...cached, cached: true },
+      refundableKey: state?.refundableKey === key ? undefined : state?.refundableKey,
+      refundableKind: state?.refundableKey === key ? undefined : state?.refundableKind,
+      refundableUntil: state?.refundableKey === key ? undefined : state?.refundableUntil,
       updatedAt: now,
     });
     return;
@@ -1607,6 +2212,9 @@ export function requestEvenChessPotentialMoves(
     activeKey: key,
     activeKind: kind,
     active: undefined,
+    refundableKey: kind === 'opponent' ? key : state?.refundableKey,
+    refundableKind: kind === 'opponent' ? kind : state?.refundableKind,
+    refundableUntil: kind === 'opponent' ? refundableUntil : state?.refundableUntil,
     updatedAt: now,
   });
 
@@ -1620,8 +2228,10 @@ export function requestEvenChessPotentialMoves(
         latestCurrent.ply !== current.ply ||
         latestCurrent.boardStateKey !== current.boardStateKey ||
         overlayStaleReason(latestOverlay, latestCurrent)
-      )
+      ) {
+        refundStaleOpponentPotentialMove(ctrl, key, kind, usedLevel, now, result.reveal?.cached);
         return;
+      }
 
       if (!result.reveal) {
         setPotentialMoveState(ctrl, {
@@ -1631,6 +2241,9 @@ export function requestEvenChessPotentialMoves(
           activeKey: undefined,
           activeKind: kind,
           active: undefined,
+          refundableKey: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableKey,
+          refundableKind: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableKind,
+          refundableUntil: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableUntil,
           updatedAt: Date.now(),
         });
         return;
@@ -1643,6 +2256,7 @@ export function requestEvenChessPotentialMoves(
         result.reveal.boardStateKey !== current.boardStateKey ||
         result.reveal.kind !== kind
       ) {
+        refundStaleOpponentPotentialMove(ctrl, key, kind, usedLevel, now, result.reveal.cached);
         setPotentialMoveState(ctrl, {
           ...ctrl.data.evenchess?.potentialMoves,
           status: 'error',
@@ -1650,6 +2264,9 @@ export function requestEvenChessPotentialMoves(
           activeKey: undefined,
           activeKind: kind,
           active: undefined,
+          refundableKey: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableKey,
+          refundableKind: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableKind,
+          refundableUntil: ctrl.data.evenchess?.potentialMoves?.refundableKey === key ? undefined : ctrl.data.evenchess?.potentialMoves?.refundableUntil,
           updatedAt: Date.now(),
         });
         return;
@@ -1672,17 +2289,235 @@ export function requestEvenChessPotentialMoves(
           ...currentState?.consumedByKind,
           [kind]: reveal.consumed,
         },
+        quotaByKind: {
+          ...currentState?.quotaByKind,
+          [kind]: reveal.quota,
+        },
+        adminUnlimitedTokens:
+          reveal.adminUnlimitedTokens ?? currentState?.adminUnlimitedTokens ?? isUnlimitedAssistanceQuota(reveal.quota, false),
+        refundableKey: kind === 'opponent' && !reveal.cached && Date.now() <= (refundableUntil ?? 0) ? key : undefined,
+        refundableKind: kind === 'opponent' && !reveal.cached && Date.now() <= (refundableUntil ?? 0) ? kind : undefined,
+        refundableUntil: kind === 'opponent' && !reveal.cached && Date.now() <= (refundableUntil ?? 0) ? refundableUntil : undefined,
         updatedAt: Date.now(),
       });
     },
   );
 }
 
+export function requestEvenChessPositionEcs(ctrl: RoundController): void {
+  const current = currentEvenChessBoardSnapshot(ctrl);
+  const overlay = ctrl.data.evenchess?.live;
+  const usedLevel = displayUsedLevel(ctrl.data, overlay);
+  const now = Date.now();
+  const key = positionEcsCacheKey(ctrl.data, current, usedLevel);
+  const state = ctrl.data.evenchess?.positionEcs;
+  const model = positionEcsButtonModel(ctrl.data, overlay, current, ctrl);
+
+  if (usedLevel < 4) {
+    setPositionEcsState(ctrl, {
+      ...state,
+      status: 'error',
+      message: 'Level 4+',
+      activeKey: key,
+      active: undefined,
+      updatedAt: now,
+    });
+    return;
+  }
+
+  if (!evenChessPlayerTurn(ctrl)) {
+    setPositionEcsState(ctrl, {
+      ...state,
+      status: 'error',
+      message: 'Available on your turn',
+      activeKey: key,
+      active: undefined,
+      consumed: model.consumed,
+      accrued: model.quota,
+      quota: model.quota,
+      available: model.available,
+      interval: model.interval,
+      ownMoves: model.ownMoves,
+      adminUnlimitedTokens: model.adminUnlimitedTokens,
+      updatedAt: now,
+    });
+    return;
+  }
+
+  if (overlayStaleReason(overlay, current) || !overlay) {
+    setPositionEcsState(ctrl, {
+      ...state,
+      status: 'loading',
+      message: 'Waiting for ECE payload',
+      activeKey: key,
+      active: undefined,
+      consumed: model.consumed,
+      accrued: model.quota,
+      quota: model.quota,
+      available: model.available,
+      interval: model.interval,
+      ownMoves: model.ownMoves,
+      adminUnlimitedTokens: model.adminUnlimitedTokens,
+      updatedAt: now,
+    });
+    requestEvenChessTestGroundOverlayForPosition(ctrl, true, {
+      ply: current.ply,
+      fen: current.boardStateKey,
+      level: usedLevel,
+    });
+    setTimeout(() => {
+      const latestCurrent = currentEvenChessBoardSnapshot(ctrl);
+      const latestOverlay = ctrl.data.evenchess?.live;
+      const latestUsedLevel = displayUsedLevel(ctrl.data, latestOverlay);
+      const latestKey = positionEcsCacheKey(ctrl.data, latestCurrent, latestUsedLevel);
+      const latestState = ctrl.data.evenchess?.positionEcs;
+      if (
+        latestKey !== key ||
+        latestCurrent.ply !== current.ply ||
+        latestCurrent.boardStateKey !== current.boardStateKey ||
+        latestState?.status !== 'loading' ||
+        latestState.message !== 'Waiting for ECE payload'
+      )
+        return;
+
+      if (latestOverlay && !overlayStaleReason(latestOverlay, latestCurrent)) requestEvenChessPositionEcs(ctrl);
+      else
+        setPositionEcsState(ctrl, {
+          ...latestState,
+          status: 'error',
+          message: 'Awaiting payload',
+          activeKey: key,
+          active: undefined,
+          updatedAt: Date.now(),
+        });
+    }, 2_200);
+    return;
+  }
+
+  if (state?.status === 'ready' && state.activeKey === key && state.active) {
+    setPositionEcsState(ctrl, clearActivePositionEcs(state) ?? { status: 'idle', updatedAt: now });
+    return;
+  }
+
+  const cached = state?.cache?.[key];
+  if (cached) {
+    setPositionEcsState(ctrl, {
+      ...state,
+      status: 'ready',
+      message: undefined,
+      activeKey: key,
+      active: { ...cached, cached: true },
+      updatedAt: now,
+    });
+    return;
+  }
+
+  if (model.available < 1) {
+    setPositionEcsState(ctrl, {
+      ...state,
+      status: 'error',
+      message: positionEcsNoTokenMessage(model),
+      activeKey: key,
+      active: undefined,
+      consumed: model.consumed,
+      accrued: model.quota,
+      quota: model.quota,
+      available: model.available,
+      interval: model.interval,
+      ownMoves: model.ownMoves,
+      adminUnlimitedTokens: model.adminUnlimitedTokens,
+      updatedAt: now,
+    });
+    return;
+  }
+
+  setPositionEcsState(ctrl, {
+    ...state,
+    status: 'loading',
+    message: 'Asking AI',
+    activeKey: key,
+    active: undefined,
+    consumed: model.consumed,
+    accrued: model.quota,
+    quota: model.quota,
+    available: model.available,
+    interval: model.interval,
+    ownMoves: model.ownMoves,
+    adminUnlimitedTokens: model.adminUnlimitedTokens,
+    updatedAt: now,
+  });
+
+  void requestEvenChessTestGroundPositionEcs(ctrl.data, current.ply, current.boardStateKey, usedLevel).then(result => {
+    const latestCurrent = currentEvenChessBoardSnapshot(ctrl);
+    const latestOverlay = ctrl.data.evenchess?.live;
+    const latestUsedLevel = displayUsedLevel(ctrl.data, latestOverlay);
+    const latestKey = positionEcsCacheKey(ctrl.data, latestCurrent, latestUsedLevel);
+    if (
+      latestKey !== key ||
+      latestCurrent.ply !== current.ply ||
+      latestCurrent.boardStateKey !== current.boardStateKey ||
+      overlayStaleReason(latestOverlay, latestCurrent)
+    )
+      return;
+
+    if (!result.card) {
+      setPositionEcsState(ctrl, {
+        ...ctrl.data.evenchess?.positionEcs,
+        status: 'error',
+        message: result.error ?? 'Ask AI unavailable',
+        activeKey: key,
+        active: undefined,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    if (
+      result.card.key !== key ||
+      result.card.gameId !== ctrl.data.game.id ||
+      result.card.ply !== current.ply ||
+      result.card.boardStateKey !== current.boardStateKey
+    ) {
+      setPositionEcsState(ctrl, {
+        ...ctrl.data.evenchess?.positionEcs,
+        status: 'error',
+        message: 'Ask AI response no longer matches the board',
+        activeKey: key,
+        active: undefined,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    const card = { ...result.card, key, createdAt: Date.now() };
+    const currentState = ctrl.data.evenchess?.positionEcs;
+    setPositionEcsState(ctrl, {
+      ...currentState,
+      status: 'ready',
+      message: undefined,
+      activeKey: key,
+      active: card,
+      cache: {
+        ...currentState?.cache,
+        [key]: card,
+      },
+      consumed: result.consumed ?? card.consumed ?? currentState?.consumed,
+      accrued: result.accrued ?? card.accrued ?? currentState?.accrued,
+      quota: result.quota ?? card.quota ?? currentState?.quota,
+      available: result.available ?? card.available ?? currentState?.available,
+      interval: result.interval ?? card.interval ?? currentState?.interval,
+      ownMoves: result.ownMoves ?? card.ownMoves ?? currentState?.ownMoves,
+      adminUnlimitedTokens: result.adminUnlimitedTokens ?? card.adminUnlimitedTokens ?? currentState?.adminUnlimitedTokens,
+      updatedAt: Date.now(),
+    });
+  });
+}
+
 export function requestEvenChessProposedMovePreview(ctrl: RoundController): void {
   const selection = readEvenChessProposedMoveSelection(ctrl);
   const now = Date.now();
-  const quota = proposedMoveQuotaForUsedLevel(selection.usedLevel);
   const current = ctrl.data.evenchess?.proposedMove;
+  const quota = current?.quota ?? proposedMoveQuotaForUsedLevel(selection.usedLevel);
   const baseOverlay = proposedMoveBaseOverlay(ctrl, selection);
 
   if (quota < 1) {
@@ -1732,6 +2567,7 @@ export function requestEvenChessProposedMovePreview(ctrl: RoundController): void
     message: 'Checking',
     activeKey: selection.key,
     baseOverlay,
+    quota,
     updatedAt: now,
   });
 
@@ -1793,6 +2629,7 @@ export function requestEvenChessProposedMovePreview(ctrl: RoundController): void
       },
       consumed: result.consumed ?? state?.consumed,
       quota: result.quota ?? state?.quota,
+      adminUnlimitedTokens: result.adminUnlimitedTokens ?? state?.adminUnlimitedTokens,
       updatedAt: Date.now(),
     });
   });
@@ -1814,9 +2651,31 @@ function setPotentialMoveState(ctrl: RoundController, state: EvenChessPotentialM
   ctrl.redraw();
 }
 
+function setPositionEcsState(ctrl: RoundController, state: EvenChessPositionEcsState): void {
+  ctrl.data.evenchess = {
+    ...ctrl.data.evenchess,
+    positionEcs: state,
+  };
+  ctrl.redraw();
+}
+
 function clearActiveProposedMove(
   state: EvenChessProposedMoveState | undefined,
 ): EvenChessProposedMoveState | undefined {
+  if (!state) return undefined;
+  return {
+    ...state,
+    status: 'idle',
+    message: undefined,
+    activeKey: undefined,
+    active: undefined,
+    updatedAt: Date.now(),
+  };
+}
+
+function clearActivePositionEcs(
+  state: EvenChessPositionEcsState | undefined,
+): EvenChessPositionEcsState | undefined {
   if (!state) return undefined;
   return {
     ...state,
@@ -1882,40 +2741,254 @@ function potentialMoveConsumedCount(
   return Object.keys(state?.consumedByKey ?? {}).filter(key => key.includes(`:potential:${kind}:`)).length;
 }
 
+function positionEcsConsumedCount(state: EvenChessPositionEcsState | undefined, overlay: EvenChessLiveOverlay | undefined): number {
+  if (typeof state?.consumed === 'number') return state.consumed;
+  if (typeof overlay?.assistance?.positionEcs?.consumed === 'number') return overlay.assistance.positionEcs.consumed;
+  return Object.keys(state?.cache ?? {}).length;
+}
+
+function isUnlimitedAssistanceQuota(quota: number, serverFlag?: boolean): boolean {
+  return Boolean(serverFlag) || quota >= 999_999;
+}
+
+function assistanceUsageLabel(consumed: number, quota: number, unlimited: boolean): string {
+  return `Used ${assistanceUsageCount(consumed, quota, unlimited)}`;
+}
+
+function assistanceUsageCount(consumed: number, quota: number, unlimited: boolean): string {
+  return unlimited ? 'Unlimited' : `${Math.min(consumed, quota)}/${quota}`;
+}
+
+function positionEcsButtonModel(
+  data: RoundData,
+  overlay: EvenChessLiveOverlay | undefined,
+  current: EvenChessBoardSnapshot,
+  ctrl?: RoundController,
+): EvenChessPositionEcsButton {
+  const usedLevel = displayUsedLevel(data, overlay);
+  const interval = overlay?.assistance?.positionEcs?.interval ?? positionEcsIntervalForUsedLevel(usedLevel);
+  const ownMoves = overlay?.assistance?.positionEcs?.ownMoves ?? positionEcsOwnMovesForPly(current.ply, data.player.color);
+  const state = data.evenchess?.positionEcs;
+  const quota = state?.quota ?? overlay?.assistance?.positionEcs?.quota ?? positionEcsAccruedForUsedLevel(usedLevel, ownMoves);
+  const adminUnlimited = isUnlimitedAssistanceQuota(quota, state?.adminUnlimitedTokens || overlay?.assistance?.positionEcs?.adminUnlimitedTokens);
+  const key = positionEcsCacheKey(data, current, usedLevel);
+  const consumed = positionEcsConsumedCount(state, overlay);
+  const active = state?.status === 'ready' && state.activeKey === key && Boolean(state.active);
+  const cached = Boolean(state?.cache?.[key]);
+  const loading = state?.status === 'loading' && state.activeKey === key;
+  const error = state?.status === 'error' && state.activeKey === key ? state.message : undefined;
+  const available = Math.max(0, quota - consumed);
+  const wrongTurn = ctrl ? !evenChessPlayerTurn(ctrl) : false;
+  const message = loading
+    ? 'Asking AI'
+    : error
+      ? error
+      : usedLevel < 4
+        ? 'Level 4+'
+        : wrongTurn
+          ? 'Available on your turn'
+        : active
+          ? `Shown ${assistanceUsageCount(consumed, quota, adminUnlimited)}`
+          : cached
+            ? `Cached ${assistanceUsageCount(consumed, quota, adminUnlimited)}`
+          : available > 0
+            ? assistanceUsageLabel(consumed, quota, adminUnlimited)
+            : positionEcsNoTokenMessage({ interval, ownMoves });
+
+  return {
+    quota,
+    consumed,
+    available,
+    interval,
+    ownMoves,
+    active,
+    disabled: usedLevel < 4 || loading || wrongTurn || (available < 1 && !cached && !active),
+    message,
+    adminUnlimitedTokens: adminUnlimited,
+  };
+}
+
+interface EvenChessPotentialMoveUsage {
+  kind: EvenChessPotentialMoveKind;
+  color: Color;
+  quota: number;
+  consumed: number;
+  remaining: number;
+  adminUnlimitedTokens: boolean;
+}
+
 function potentialMoveButtonModel(
   data: RoundData,
   overlay: EvenChessLiveOverlay | undefined,
   current: EvenChessBoardSnapshot,
-  kind: EvenChessPotentialMoveKind,
+  ctrl?: RoundController,
 ): EvenChessPotentialMoveButton {
   const usedLevel = displayUsedLevel(data, overlay);
-  const quota = potentialMoveQuotaForUsedLevel(usedLevel, kind);
   const state = data.evenchess?.potentialMoves;
+  const playerUsage = potentialMoveUsageForKind(data, overlay, state, usedLevel, 'player');
+  const opponentUsage = potentialMoveUsageForKind(data, overlay, state, usedLevel, 'opponent');
+  const kind = potentialMoveKindForCurrentTurnData(data, ctrl);
+  const currentUsage = kind === 'player' ? playerUsage : opponentUsage;
   const key = potentialMoveRevealKey(data, current, usedLevel, kind);
-  const consumed = potentialMoveConsumedCount(state, kind);
   const active = state?.status === 'ready' && state.activeKind === kind && state.activeKey === key;
-  const errorForKind = state?.status === 'error' && state.activeKind === kind;
   const loadingForKind = state?.status === 'loading' && state.activeKind === kind;
-  const message = errorForKind
-    ? state?.message || ''
-    : loadingForKind
-      ? 'Checking'
-      : quota < 1
-        ? kind === 'player'
-          ? 'Level 6+'
-          : 'Level 5+'
-        : active
-          ? `Shown ${Math.min(consumed, quota)}/${quota}`
-          : `Used ${Math.min(consumed, quota)}/${quota}`;
+  const cached = Boolean(state?.cache?.[key]);
+  const now = Date.now();
+  const coolingDown = kind === 'player' && typeof state?.cooldownUntil === 'number' && state.cooldownUntil > now;
+  const tokenUnavailable = currentUsage.remaining < 1 && !currentUsage.adminUnlimitedTokens && !cached && !active;
 
   return {
     kind,
-    label: kind === 'player' ? 'My Potentials' : 'Opponent Potentials',
+    label: 'Potential Moves',
+    active,
+    disabled: currentUsage.quota < 1 || loadingForKind || coolingDown || tokenUnavailable,
+    message: potentialMoveUsageSummary(playerUsage, opponentUsage),
+  };
+}
+
+function potentialMoveUsageForKind(
+  data: RoundData,
+  overlay: EvenChessLiveOverlay | undefined,
+  state: EvenChessPotentialMoveState | undefined,
+  usedLevel: number,
+  kind: EvenChessPotentialMoveKind,
+): EvenChessPotentialMoveUsage {
+  const quota =
+    state?.quotaByKind?.[kind] ?? overlay?.assistance?.potentialMoves?.quotaByKind?.[kind] ?? potentialMoveQuotaForUsedLevel(usedLevel, kind);
+  const adminUnlimited = isUnlimitedAssistanceQuota(quota, state?.adminUnlimitedTokens || overlay?.assistance?.potentialMoves?.adminUnlimitedTokens);
+  const consumed = potentialMoveConsumedCount(state, kind);
+  return {
+    kind,
+    color: potentialMoveKindColor(data, kind),
     quota,
     consumed,
-    active,
-    disabled: quota < 1 || loadingForKind,
-    message,
+    remaining: Math.max(0, quota - consumed),
+    adminUnlimitedTokens: adminUnlimited,
+  };
+}
+
+function potentialMoveUsageSummary(
+  playerUsage: EvenChessPotentialMoveUsage,
+  opponentUsage: EvenChessPotentialMoveUsage,
+): string {
+  return `${colorLabel(playerUsage.color)} ${potentialMoveRemainingCount(playerUsage)} - ${colorLabel(opponentUsage.color)} ${potentialMoveRemainingCount(opponentUsage)}`;
+}
+
+function potentialMoveRemainingCount(usage: EvenChessPotentialMoveUsage): string {
+  return usage.adminUnlimitedTokens ? 'Unlimited' : `${usage.remaining}/${usage.quota}`;
+}
+
+function potentialMoveKindColor(data: RoundData, kind: EvenChessPotentialMoveKind): Color {
+  return kind === 'player' ? data.player.color : opponentColorForData(data);
+}
+
+function opponentColorForData(data: RoundData): Color {
+  const opponentColor = data.opponent?.color;
+  if (opponentColor === 'white' || opponentColor === 'black') return opponentColor;
+  return data.player.color === 'white' ? 'black' : 'white';
+}
+
+function colorLabel(color: Color): string {
+  return color === 'white' ? 'White' : 'Black';
+}
+
+function potentialMoveKindForCurrentTurn(ctrl: RoundController): EvenChessPotentialMoveKind {
+  return potentialMoveKindForCurrentTurnData(ctrl.data, ctrl);
+}
+
+function potentialMoveKindForCurrentTurnData(
+  data: RoundData,
+  ctrl?: RoundController,
+): EvenChessPotentialMoveKind {
+  const playerTurn = ctrl ? evenChessPlayerTurn(ctrl) : evenChessDataPlayerTurn(data);
+  return playerTurn ? 'player' : 'opponent';
+}
+
+function potentialMoveTurnAllowed(ctrl: RoundController, kind: EvenChessPotentialMoveKind): boolean {
+  const playerTurn = evenChessPlayerTurn(ctrl);
+  return kind === 'player' ? playerTurn : !playerTurn;
+}
+
+function potentialMoveTurnMessage(kind: EvenChessPotentialMoveKind): string {
+  return kind === 'player' ? 'Available on your turn' : "Available on opponent's turn";
+}
+
+function isPotentialMoveTurnMessage(message: string): boolean {
+  return message === potentialMoveTurnMessage('player') || message === potentialMoveTurnMessage('opponent');
+}
+
+function positionEcsOwnMovesForPly(ply: number, side: Color): number {
+  const safePly = Math.max(0, Math.trunc(ply));
+  return side === 'white' ? Math.floor((safePly + 1) / 2) : Math.floor(safePly / 2);
+}
+
+function positionEcsNoTokenMessage({ interval, ownMoves }: { interval: number; ownMoves: number }): string {
+  if (interval < 1) return 'Available at Level 4+';
+  const safeOwnMoves = Math.max(0, Math.trunc(ownMoves));
+  const next = (Math.floor(safeOwnMoves / interval) + 1) * interval;
+  const remaining = Math.max(1, next - safeOwnMoves);
+  return `Available in ${remaining} move${remaining === 1 ? '' : 's'}`;
+}
+
+function visiblePositionEcsCard(
+  ctrl: RoundController,
+  current: EvenChessBoardSnapshot,
+): EvenChessPositionEcsCard | undefined {
+  const state = ctrl.data.evenchess?.positionEcs;
+  const usedLevel = displayUsedLevel(ctrl.data, ctrl.data.evenchess?.live);
+  const key = positionEcsCacheKey(ctrl.data, current, usedLevel);
+  if (!state?.active || state.activeKey !== key || state.active.key !== key) return undefined;
+  if (
+    state.active.gameId !== ctrl.data.game.id ||
+    state.active.ply !== current.ply ||
+    state.active.boardStateKey !== current.boardStateKey
+  )
+    return undefined;
+  return state.active;
+}
+
+function activePositionEcsOverlay(
+  ctrl: RoundController,
+  current: EvenChessBoardSnapshot,
+): EvenChessLiveOverlay | undefined {
+  const card = visiblePositionEcsCard(ctrl, current);
+  return card ? overlayFromPositionEcsCard(card) : undefined;
+}
+
+function overlayFromPositionEcsCard(card: EvenChessPositionEcsCard): EvenChessLiveOverlay {
+  return {
+    enabled: true,
+    gameId: card.gameId,
+    ply: card.ply,
+    boardStateKey: card.boardStateKey,
+    perspective: card.perspective,
+    auditId: card.auditId,
+    serverAuthorized: card.serverAuthorized,
+    ttlMillis: 60_000,
+    stale: false,
+    createdAt: card.createdAt,
+    cards: [coachCardFromPositionEcsCard(card)],
+    visuals: card.visuals ?? [],
+  };
+}
+
+function coachCardFromPositionEcsCard(card: EvenChessPositionEcsCard): EvenChessCoachCard {
+  return {
+    id: `position-ecs-${card.key}`,
+    gameId: card.gameId,
+    ply: card.ply,
+    boardStateKey: card.boardStateKey,
+    featureKey: 'ece.position_ecs.ai_text',
+    title: card.title,
+    body: card.body,
+    level: card.level,
+    auditId: card.auditId,
+    defaultActive: true,
+    visibility: 'visible',
+    serverAuthorized: card.serverAuthorized,
+    approvedDisplayPayload: card.approvedDisplayPayload,
+    stale: false,
+    ttlMillis: 60_000,
   };
 }
 
@@ -2001,6 +3074,10 @@ function potentialMoveRevealKey(
   return `${data.game.id}:${data.player?.color ?? 'white'}:potential:${kind}:L${usedLevel}:${current.ply}:${current.boardStateKey}`;
 }
 
+function positionEcsCacheKey(data: RoundData, current: EvenChessBoardSnapshot, usedLevel: number): string {
+  return `${data.game.id}:${data.player?.color ?? 'white'}:position-ecs:L${usedLevel}:${current.ply}:${current.boardStateKey}`;
+}
+
 function isPromotionArrow(ctrl: RoundController, orig: Key, dest: Key): boolean {
   const piece = ctrl.chessground?.state.pieces.get(orig);
   if (!piece || piece.role !== 'pawn') return false;
@@ -2040,8 +3117,8 @@ function displayableEvenChessCoachDisplay(
 function evenChessPlayerTurn(ctrl: RoundController): boolean {
   const activeColor = ctrl.data.game.player;
   if (activeColor === 'white' || activeColor === 'black')
-    return !ctrl.replaying() && activeColor === ctrl.data.player.color;
-  return ctrl.canMove();
+    return !ctrl.replaying?.() && activeColor === ctrl.data.player.color;
+  return typeof ctrl.canMove === 'function' && ctrl.canMove();
 }
 
 function coachTextSnapshotFromCard(
@@ -2140,6 +3217,7 @@ function displayableEvenChessBoardLayerVisuals(
     .filter(visual => potentialMoveVisualRevealAllowed(data, overlay, current, visual));
   const revealVisuals = (reveal?.visuals ?? [])
     .filter(visual => revealVisualRenderable(visual, reveal))
+    .filter(visual => !isAcceptedEvalVisual(visual))
     .filter(() => potentialRevealFeatureEnabled(data, reveal));
   return [...overlayVisuals, ...revealVisuals]
     .slice(0, maxBoardOverlayVisuals);
@@ -2336,6 +3414,61 @@ export function applyEvenChessLevelPreset(data: RoundData, level: number): void 
       },
     },
   };
+  writeLocalEvenChessDisplayState(data);
+}
+
+function displayStorageKey(gameId: string): string {
+  return `${displayStoragePrefix}${gameId}`;
+}
+
+function localStorageForEvenChessDisplay():
+  | {
+      getItem(key: string): string | null;
+      setItem(key: string, value: string): void;
+    }
+  | undefined {
+  const maybeWindow = (globalThis as any).window;
+  return maybeWindow?.localStorage;
+}
+
+function readLocalEvenChessDisplayState(
+  gameId: string,
+  setLevel: number,
+): { usedLevel?: number; toggles?: EvenChessDisplayToggles } | undefined {
+  try {
+    const raw = localStorageForEvenChessDisplay()?.getItem(displayStorageKey(gameId));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    const usedLevel =
+      typeof parsed?.usedLevel === 'number' && Number.isFinite(parsed.usedLevel)
+        ? clampLevel(parsed.usedLevel, setLevel)
+        : undefined;
+    const toggles = persistedEvenChessDisplayTogglesFromPayload(
+      { display: { toggles: parsed?.toggles } },
+      setLevel,
+    );
+    if (usedLevel === undefined && !toggles) return undefined;
+    return { usedLevel, toggles };
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLocalEvenChessDisplayState(data: RoundData, usedLevelOverride?: number): void {
+  const display = data.evenchess?.display;
+  if (!display || display.setLevel === undefined || data.player?.spectator) return;
+
+  try {
+    localStorageForEvenChessDisplay()?.setItem(
+      displayStorageKey(data.game.id),
+      JSON.stringify({
+        usedLevel: clampLevel(usedLevelOverride ?? displayUsedLevel(data, data.evenchess?.live), setLevelForData(data)),
+        toggles: displayToggles(data),
+      }),
+    );
+  } catch {
+    // Local fallback is best-effort only; server persistence remains authoritative.
+  }
 }
 
 export function setEvenChessLevelFeature(
@@ -2365,6 +3498,7 @@ export function setEvenChessLevelFeature(
       },
     },
   };
+  writeLocalEvenChessDisplayState(data);
 }
 
 export function selectedEvenChessDisplayLevel(data: RoundData): number {
@@ -2372,6 +3506,11 @@ export function selectedEvenChessDisplayLevel(data: RoundData): number {
     .filter(feature => featureEnabled(data, feature.key))
     .map(feature => feature.level);
   return Math.max(0, ...enabledLevels);
+}
+
+function appliedEvenChessDisplayLevel(data: RoundData): number {
+  const setLevel = setLevelForData(data);
+  return clampLevel(displayToggles(data).appliedLevel ?? 0, setLevel);
 }
 
 function featureEnabled(data: RoundData, key: EvenChessLevelFeatureKey): boolean {
@@ -2389,6 +3528,7 @@ function displayFeatureSelectionKey(data: RoundData): string {
   const toggles = displayToggles(data);
   const potential = data.evenchess?.potentialMoves;
   const proposed = data.evenchess?.proposedMove;
+  const position = data.evenchess?.positionEcs;
   const featureState = levelFeatures
     .map(feature => `${feature.key}:${featureEnabled(data, feature.key) ? 1 : 0}`)
     .join(',');
@@ -2397,6 +3537,7 @@ function displayFeatureSelectionKey(data: RoundData): string {
     `board:${toggles.boardVisuals ? 1 : 0}`,
     `potential:${potential?.activeKind ?? ''}:${potential?.activeKey ?? ''}:${potential?.status ?? ''}`,
     `proposed:${proposed?.activeKey ?? ''}:${proposed?.status ?? ''}`,
+    `position:${position?.activeKey ?? ''}:${position?.status ?? ''}`,
     featureState,
   ].join(';');
 }
@@ -2438,6 +3579,35 @@ function activePotentialMoveReveal(
   )
     return undefined;
   return state.active;
+}
+
+function activePotentialEvalOverlay(
+  data: RoundData,
+  overlay: EvenChessLiveOverlay | undefined,
+  current: EvenChessBoardSnapshot,
+): EvenChessLiveOverlay | undefined {
+  const reveal = activePotentialMoveReveal(data, overlay, current);
+  if (!reveal) return undefined;
+
+  const visuals = (reveal.visuals ?? [])
+    .filter(visual => revealVisualRenderable(visual, reveal))
+    .filter(isAcceptedEvalVisual);
+  if (!visuals.length) return undefined;
+
+  return {
+    enabled: true,
+    gameId: reveal.gameId,
+    ply: reveal.ply,
+    boardStateKey: reveal.boardStateKey,
+    perspective: reveal.perspective,
+    auditId: reveal.auditId,
+    serverAuthorized: reveal.serverAuthorized,
+    ttlMillis: 60000,
+    stale: false,
+    createdAt: reveal.createdAt,
+    cards: [],
+    visuals,
+  };
 }
 
 function potentialRevealFeatureEnabled(
@@ -2615,6 +3785,33 @@ function setLevelForData(data: RoundData): number {
   return clampLevel(data.evenchess?.display?.setLevel ?? data.evenchess?.testGround?.level ?? 10, 10);
 }
 
+function opponentLevelsForData(data: RoundData): { setLevel: number; usedLevel: number } | undefined {
+  const opponent = data.evenchess?.display?.opponent;
+  if (opponent?.setLevel === undefined) return undefined;
+  const setLevel = clampLevel(opponent.setLevel, 10);
+  const usedLevel = clampLevel(opponent.usedLevel ?? 0, setLevel);
+  return { setLevel, usedLevel };
+}
+
+function renderLevelSummary(
+  setLevel: number,
+  usedLevel: number,
+  opponentLevels: { setLevel: number; usedLevel: number } | undefined,
+): VNode {
+  return hl('span.evenchess-live__level-summary', [
+    hl('span.evenchess-live__level-summary-row', [
+      hl('span.evenchess-live__level', `Set Level: ${setLevel}`),
+      hl('span.evenchess-live__used', `Used Level: ${usedLevel}`),
+    ]),
+    opponentLevels
+      ? hl('span.evenchess-live__level-summary-row', [
+          hl('span.evenchess-live__level', `Opponent Set: ${opponentLevels.setLevel}`),
+          hl('span.evenchess-live__used', `Opponent Used: ${opponentLevels.usedLevel}`),
+        ])
+      : undefined,
+  ]);
+}
+
 function preferredUsedLevelForData(data: RoundData, setLevel: number): number {
   const rawLevel =
     data.evenchess?.display?.preferredUsedLevel ??
@@ -2628,10 +3825,13 @@ function defaultFeatureTogglesForData(data: RoundData): EvenChessLevelFeatureTog
 }
 
 function displayUsedLevel(data: RoundData, overlay: EvenChessLiveOverlay | undefined): number {
-  return Math.max(
-    data.evenchess?.display?.usedLevel ?? 0,
-    payloadUsedLevel(overlay),
-    selectedEvenChessDisplayLevel(data),
+  return clampLevel(
+    Math.max(
+      data.evenchess?.display?.usedLevel ?? 0,
+      payloadUsedLevel(overlay),
+      selectedEvenChessDisplayLevel(data),
+    ),
+    setLevelForData(data),
   );
 }
 
@@ -2660,12 +3860,21 @@ function shouldShowEvenChessShell(ctrl: RoundController): boolean {
 }
 
 function renderCoachShell(
+  ctrl: RoundController,
   testGround: EvenChessTestGroundState | undefined,
+  overlay: EvenChessLiveOverlay | undefined,
   evalStrip: VNode | undefined,
-  potentialFooter: VNode | undefined,
+  levelControls: VNode,
+  coachResults: VNode[],
 ): VNode {
+  const data = ctrl.data;
   const status = testGround?.status;
   const message = testGround?.message || 'Awaiting payload';
+  const setLevel = setLevelForData(data);
+  const usedLevel = displayUsedLevel(data, overlay);
+  const opponentLevels = opponentLevelsForData(data);
+  const current = currentEvenChessBoardSnapshot(ctrl);
+  const coachActions = renderCoachActionControls(ctrl, overlay, current);
   return hl(
     'section.evenchess-live__card.evenchess-live__card--coach.evenchess-live__card--shell',
     {
@@ -2675,19 +3884,15 @@ function renderCoachShell(
     },
     [
       evalStrip,
-      hl('div.evenchess-live__head', [
-        hl('strong.evenchess-live__label', 'EvenChess Coach'),
-        renderLevelBadge(testGround?.level ?? 10),
-      ]),
-      hl('h2.evenchess-live__title', status ? testGroundTitle(status) : 'Coach'),
-      hl('p.evenchess-live__body', message),
-      potentialFooter,
-    ],
-  );
-}
-
-function renderLevelBadge(level: number): VNode {
-  return hl('span.evenchess-live__level', `Level ${level}`);
+	      hl('div.evenchess-live__head', [
+	        hl('strong.evenchess-live__label', 'EvenChess Coach'),
+	        renderLevelSummary(setLevel, usedLevel, opponentLevels),
+	      ]),
+	      coachActions,
+	      levelControls,
+	      renderCoachTextArea(status ? testGroundTitle(status) : 'Coach', message, coachResults),
+	    ],
+	  );
 }
 
 function testGroundTitle(status: EvenChessTestGroundState['status']): string {
@@ -2731,7 +3936,7 @@ export function evenChessTtsAutoDelayMillis(config: EvenChessTtsConfig | undefin
 function scheduleEvenChessAutoTts(
   data: RoundData,
   config: EvenChessTtsConfig | undefined,
-  item: EvenChessTtsItem,
+  item: EvenChessLiveTtsItem,
 ): void {
   const state = autoTtsState.get(data) ?? {};
   const cancelScheduled = () => {
@@ -2746,15 +3951,45 @@ function scheduleEvenChessAutoTts(
     return;
   }
 
-  const key = `${item.auditId}:${item.id}:${item.displayedText}`;
-  if (state.spokenKey === key || state.scheduledKey === key) return;
+  const key = normalizeEvenChessTtsText(item.text ?? item.displayedText);
+  const baseKey = normalizeEvenChessTtsText(item.baseText || key);
+  const additionKey = normalizeEvenChessTtsText(item.autoAddedText ?? '');
+  if (!key) {
+    cancelScheduled();
+    return;
+  }
+
+  const textToSpeak = evenChessAutoTtsDeltaText({
+    previousFullText: state.spokenKey,
+    currentFullText: key,
+    previousBaseText: state.lastBaseKey,
+    currentBaseText: baseKey,
+    previousAdditionText: state.lastAdditionKey,
+    currentAdditionText: additionKey,
+    stableBaseText: state.stableBaseKey,
+  });
+  state.lastBaseKey = baseKey;
+  state.lastAdditionKey = additionKey;
+  if (!additionKey) state.stableBaseKey = baseKey;
+
+  if (!textToSpeak) {
+    cancelScheduled();
+    return;
+  }
+  if (state.scheduledKey === key) return;
   cancelScheduled();
 
+  const autoItem: EvenChessTtsItem = {
+    ...item,
+    id: `${item.id}:auto`,
+    displayedText: textToSpeak,
+    text: textToSpeak,
+  };
   state.scheduledKey = key;
   state.timer = setTimeout(() => {
     const current = autoTtsState.get(data) ?? {};
     if (current.scheduledKey !== key) return;
-    const result = speakEvenChessTts(config, item);
+    speakEvenChessTts(config, autoItem);
     current.timer = undefined;
     current.scheduledKey = undefined;
     current.spokenKey = key;
@@ -2769,6 +4004,7 @@ function renderTtsButton(config: EvenChessTtsConfig | undefined, item: EvenChess
   return hl(
     'button.evenchess-live__tts',
     {
+      key: evenChessTtsRenderKey(item, reason),
       attrs: {
         ...dataIcon(licon.Voice),
         type: 'button',
@@ -2781,7 +4017,8 @@ function renderTtsButton(config: EvenChessTtsConfig | undefined, item: EvenChess
         (event: Event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (!disabled) speakEvenChessTts(config, item);
+          const currentItem = currentTtsItemFromEvent(event, item);
+          if (!ttsSafetyReason(config, currentItem)) speakEvenChessTts(config, currentItem);
         },
         undefined,
         false,
@@ -2791,14 +4028,137 @@ function renderTtsButton(config: EvenChessTtsConfig | undefined, item: EvenChess
   );
 }
 
+function currentTtsItemFromEvent(event: Event, fallback: EvenChessTtsItem): EvenChessTtsItem {
+  const currentTarget = event.currentTarget as
+    | {
+        closest?: (selector: string) => { getAttribute?: (name: string) => string | null } | null;
+      }
+    | null
+    | undefined;
+  const card = currentTarget?.closest?.('[data-evenchess-tts-text]');
+  const text = normalizeEvenChessTtsText(card?.getAttribute?.('data-evenchess-tts-text') ?? '');
+  if (!text) return fallback;
+
+  return {
+    ...fallback,
+    id: card?.getAttribute?.('data-evenchess-tts-item-id') || fallback.id,
+    auditId: card?.getAttribute?.('data-evenchess-tts-audit-id') || fallback.auditId,
+    displayedText: text,
+    text,
+    serverAuthorized: ttsBooleanAttr(
+      card?.getAttribute?.('data-evenchess-tts-server-authorized'),
+      fallback.serverAuthorized,
+    ),
+    approvedDisplayPayload: ttsBooleanAttr(
+      card?.getAttribute?.('data-evenchess-tts-approved-display-payload'),
+      fallback.approvedDisplayPayload,
+    ),
+  };
+}
+
+function ttsBooleanAttr(value: string | null | undefined, fallback: boolean): boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+}
+
+function renderEvenChessDrawToggle(ctrl: RoundController): VNode {
+  const active = Boolean((ctrl as RoundController & { evenChessDrawMode?: boolean }).evenChessDrawMode);
+  return hl(
+    `button.evenchess-live__draw-toggle${active ? '.is-active' : ''}`,
+    {
+      attrs: {
+        type: 'button',
+        'aria-pressed': String(active),
+        title: active ? 'Return to piece movement' : 'Draw green arrows and circles on the board',
+      },
+      hook: bind('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        (ctrl as RoundController & { toggleEvenChessDrawMode?: () => void }).toggleEvenChessDrawMode?.();
+      }),
+    },
+    [hl('span.evenchess-live__draw-label', 'Draw')],
+  );
+}
+
+function renderTtsAutoToggle(
+  ctrl: RoundController,
+  config: EvenChessTtsConfig | undefined,
+  item: EvenChessTtsItem,
+): VNode {
+  const reason = ttsSafetyReason(config, item);
+  const disabled = Boolean(reason);
+  const enabled = Boolean(config?.autoSpeak);
+  return hl('label.evenchess-live__tts-auto', {
+    key: `auto-${evenChessTtsRenderKey(item, reason)}-${enabled ? 'on' : 'off'}`,
+    attrs: {
+      title: ttsAutoToggleTitle(reason, enabled),
+      'aria-label': 'Automatically read new EvenChess coach text',
+    },
+  }, [
+    hl('input', {
+      attrs: {
+        type: 'checkbox',
+        checked: enabled,
+        disabled,
+      },
+      hook: bind('change', (event: Event) => {
+        event.stopPropagation();
+        if (disabled) return;
+        setEvenChessTtsAutoSpeak(ctrl, (event.currentTarget as HTMLInputElement).checked);
+      }),
+    }),
+    hl('span.evenchess-live__tts-auto-label', 'Auto'),
+  ]);
+}
+
+function evenChessTtsRenderKey(
+  item: EvenChessTtsItem,
+  reason: ReturnType<typeof ttsSafetyReason>,
+): string {
+  return [
+    item.id,
+    item.auditId,
+    normalizeEvenChessTtsText(item.text ?? item.displayedText),
+    reason ?? 'ready',
+  ].join('|');
+}
+
+export function setEvenChessTtsAutoSpeakForData(data: RoundData, enabled: boolean): void {
+  const current = evenChessTtsConfigForData(data);
+  const next: EvenChessTtsConfig = {
+    ...(current ?? {
+      enabled: false,
+      provider: 'browser-speech',
+      serverAuthorized: true,
+      policyVersion: 'tts-v1',
+    }),
+    autoSpeak: enabled,
+  };
+  data.evenchess = {
+    ...(data.evenchess ?? {}),
+    tts: next,
+  };
+  if (data.pref?.evenchess) data.pref.evenchess.ttsAutoSpeak = enabled;
+}
+
+function setEvenChessTtsAutoSpeak(ctrl: RoundController, enabled: boolean): void {
+  setEvenChessTtsAutoSpeakForData(ctrl.data, enabled);
+  ctrl.redraw?.();
+}
+
+function ttsAutoToggleTitle(reason: ReturnType<typeof ttsSafetyReason>, enabled: boolean): string {
+  if (!reason) return enabled ? 'Auto-read is on' : 'Auto-read new coach text';
+  return ttsButtonTitle(reason);
+}
+
 function ttsButtonTitle(reason: ReturnType<typeof ttsSafetyReason>): string {
   switch (reason) {
     case undefined:
       return 'Read aloud';
     case 'disabled':
       return 'Enable TTS Coach in EvenChess settings';
-    case 'muted-opponent-turn':
-      return 'TTS is muted during the opponent turn';
     case 'unsupported-provider':
       return 'This TTS provider is not available in the browser';
     case 'unsupported-browser':
@@ -2950,11 +4310,10 @@ function boardOverlayIndicatorFromVisual(
     return {
       id: visual.id,
       square: key,
-      text: '',
+      text: 'P',
       colour: overlayColours.pin,
       tooltip: 'Pinned piece',
       position: 'top_left',
-      icon: 'pin',
     };
   }
 
@@ -3120,9 +4479,9 @@ function renderBoardOverlayIndicator(indicator: EvenChessBoardOverlayIndicator, 
         style: styleAttr(indicatorStyle(indicator, orientation)),
       },
     },
-    indicator.icon
+    indicator.icon === 'shield'
       ? hl('span.evenchess-board-overlay__indicator-icon', {
-          attrs: dataIcon(indicator.icon === 'shield' ? licon.Shield : licon.Padlock),
+          attrs: dataIcon(licon.Shield),
         })
       : indicator.text,
   );
@@ -3243,6 +4602,10 @@ function dedupeOverlayItems<T>(items: T[], key: (item: T) => string): T[] {
 
 function fixed(value: number): string {
   return value.toFixed(3).replace(/\.?0+$/, '');
+}
+
+function fixedPx(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, '');
 }
 
 function visualToBoardShape(visual: EvenChessBoardVisual): DrawShape | undefined {

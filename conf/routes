@@ -8,12 +8,22 @@ GET   /evenchess/play/search           controllers.EvenChess.search
 GET   /evenchess/play/search.json      controllers.EvenChess.searchJson
 GET   /evenchess/account               controllers.EvenChess.account
 GET   /evenchess/ece/board-overlay     controllers.EvenChess.eceBoardOverlay
+GET   /evenchess/review/$gameId<[A-Za-z0-9]{8,12}>/state controllers.EvenChess.reviewState(gameId)
+POST  /evenchess/review/$gameId<[A-Za-z0-9]{8,12}>/ecemf controllers.EvenChess.reviewEcemf(gameId)
+POST  /evenchess/review/$gameId<[A-Za-z0-9]{8,12}>/match-summary controllers.EvenChess.reviewMatchSummary(gameId)
+POST  /evenchess/review/$gameId<[A-Za-z0-9]{8,12}>/non-live-ask-ai controllers.EvenChess.reviewNonLiveAskAi(gameId)
+POST  /evenchess/review/non-live-ask-ai/ad-grant controllers.EvenChess.reviewNonLiveAskAiAdGrant
+POST  /evenchess/live/used-level       controllers.EvenChess.recordUsedLevel
+POST  /evenchess/live/display-state    controllers.EvenChess.recordDisplayState
 GET   /evenchess/testground/ece/board-overlay controllers.EvenChess.testGroundEceBoardOverlay
 GET   /evenchess/testground/ece/game-history controllers.EvenChess.testGroundEceGameHistory
 POST  /evenchess/testground/ece/full-game-review controllers.EvenChess.testGroundEceFullGameReview
 POST  /evenchess/testground/ece/full-match-summary controllers.EvenChess.testGroundEceFullMatchSummary
+POST  /evenchess/testground/ece/performance-summary controllers.EvenChess.testGroundEcePerformanceSummary
 POST  /evenchess/testground/ece/proposed-move controllers.EvenChess.testGroundEceProposedMove
 POST  /evenchess/testground/ece/potential-move controllers.EvenChess.testGroundEcePotentialMove
+POST  /evenchess/testground/ece/potential-move/refund controllers.EvenChess.testGroundEcePotentialMoveRefund
+POST  /evenchess/testground/ece/position-ecs controllers.EvenChess.testGroundEcePositionEcs
 
 # 2-letter routes, then lang route
 GET   /tv                              controllers.Tv.index

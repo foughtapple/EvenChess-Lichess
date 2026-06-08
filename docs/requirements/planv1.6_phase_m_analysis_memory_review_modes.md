@@ -269,16 +269,23 @@ Foundations already present:
 - `LiveCoachingTest.scala` has review-mode and full-game review planner coverage;
 - ECE combined requirements confirm `/v1/ece/game-review` is a post-game review route and must not alter live fairness.
 
-Deployment blockers:
+2026-06-08 implementation update:
 
-- `UserAnalysisMemory` is currently an in-memory/domain model, not a durable repository;
-- no migration/schema-backed storage is established for retained live history or requested analyses;
-- no production controller route was found that opens retained EvenChess analysis memory from native Lichess replay/analysis pages;
-- no production capture hook was found that writes sanitized live ECE output after each committed move into durable history;
-- no production cleanup job was found for last-10/last-100 retention or paid saved-game exceptions;
-- no token/quota ledger integration was proven for requested full-game/custom analysis;
-- no browser analysis/replay adapter evidence was found proving the same overlay shell renders retained history by ply;
-- no end-to-end test was found for opening a completed game, stepping moves, and seeing retained payloads without recalculation.
+- production ECL routes now exist for post-game review state lookup, ECEMF generation, match summary, non-live Ask AI, and ad-earned non-live Ask AI credit grants under `/evenchess/review/...`;
+- ECL now has a server-side JSON review store, configurable with `EVENCHESS_REVIEW_STORE_DIR`, for sanitized canonical ECEMF objects, per-ply per-side display frames, match summaries, non-live Ask AI payloads, and quota ledger files;
+- the native analysis/replay side panel now renders an EvenChess Coach Review card driven by `ctrl.node.ply`; the card is mounted in an `analyse__side-stack` so real-game replay pages keep the card when Lichess replaces `aside.analyse__side` with server-side replay HTML;
+- the round replay overlay also has a production post-game review panel for completed-game contexts that still use the round bundle;
+- the existing universal board overlay endpoint can render stored ECEMF frames during replay/analysis;
+- ECEMF generation is L10-only, post-game-only, validates diagnostics and forbidden fields before storing, and stores both white and black side display frames.
+- browser verification on `http://localhost:8080/5H4cNrww/black` after restarting `lila` generated 6 ECEMF frames, returned a Match Summary, returned non-live Ask AI text, and preserved the saved Ask AI payload after page reload.
+
+Remaining deployment blockers:
+
+- the review store is durable and server-deployable when its directory is persisted, but it is not yet a Mongo/schema-migrated repository;
+- no production game-completion hook writes every live ECE output into retained recent-game history automatically;
+- no production cleanup job enforces last-10/last-100 retention or paid saved-game exceptions yet;
+- non-live Ask AI has a dedicated server-side daily/ad-credit ledger, but final subscription-provider wiring for Standard/Premium tier source is still pending;
+- full restart/reopen coverage across multiple old games and step-every-ply overlay verification remains required before public launch.
 
 ## 11. Persistence Requirements
 

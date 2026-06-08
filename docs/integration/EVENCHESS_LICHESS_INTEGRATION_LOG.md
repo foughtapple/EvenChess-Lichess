@@ -599,7 +599,7 @@ For this phase, it records documentation-only direction alignment for the native
 - Lichess seam: Local launcher/test support only; no route/controller/UI adapter, gameplay path, browser direct ECE call, ECE service internals, or production deployment behavior is changed.
 - Lichess files touched: None.
 - EvenChess files touched: `scripts/evenchess-testground.ps1`; `scripts/evenchess-testground-panel.js`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
-- Why this seam exists: The round package build can emit current bundle/CSS files without rewriting `public/compiled/manifest.json`; the running site then serves stale round assets and no EvenChess shell appears. Launch EvenChess now repairs generated asset ownership and runs the full UI build so the manifest points at the current round bundle before the local stack starts. The panel also reports whether the manifest-selected round JS/CSS contain the EvenChess level shell and toggle styles.
+- Why this seam exists: The round package build can emit current bundle/CSS files without rewriting `public/compiled/manifest.json`; the running site then serves stale round assets and no EvenChess shell appears. Launch EvenChess now repairs generated asset ownership and runs the full UI build so the manifest points at the current round bundle before the local stack starts. The panel also reports whether the manifest-selected round JS/CSS contain the current combined coach-level controls and toggle styles.
 - Public UX effect: None. This affects only the local Windows Test Ground launcher/panel.
 - Preserved Lichess capability: Native Lichess local stack start/stop, Docker flow, WSL flow, site URLs, and explicit Real/Test ECE lifecycle controls remain unchanged.
 - Patch map entry: None; no upstream/core source file changed in this launcher-support update.
@@ -1325,7 +1325,7 @@ For this phase, it records documentation-only direction alignment for the native
 
 - Phase: V2-proposed-move-post-move-preview.
 - Lichess seam: Same-origin ECE bridge and native round overlay rendering.
-- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/interfaces.ts`; `ui/round/src/view/evenchessOverlay.ts`.
 - EvenChess files touched: `modules/evenchess/src/main/EceLiveBridge.scala`; `ui/round/src/interfaces.ts`; `ui/round/src/evenchessTestGround.ts`; `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
 - Why this seam exists: ECE proposed-move responses now return deterministic post-move display data as `proposed_move_evaluation.after_move_side_output`, nested under the proposed-move evaluation. ECL must parse that legal-only nested side output server-side, normalize it through the existing Display Engine path, and let the round UI toggle the cached post-move preview against the cached normal board-state payload. If legal post-move cards/visuals are present but `new_fen` is absent, ECL still sends the normalized payload identity as the preview board-state key so the browser applies the approved display payload instead of suppressing it. The browser overlay branch uses the nested post-move audit id when validating child cards/visuals, because the outer proposed-call text card can legitimately use a different audit id.
 - Public UX effect: A legal proposed-move request can show the board/coach as if the arrow move had happened, while pressing Proposed Move again restores the actual-position display without consuming another token. Illegal/invalid proposed moves still show only advice/error text and do not render post-move overlays.
@@ -1743,18 +1743,876 @@ For this phase, it records documentation-only direction alignment for the native
 | `PM-2026-144` | `INT-2026-149` | Live L6 WikiBook follows analysis-style collapse behavior and provides a readable internal scroll region above the EvenChess levels card. | Reapply the live `toggle-box--ready` marker, live fieldset pointer-events override, stored open state, and WikiBook text scroll sizing after upstream round/WikiBook layout changes. |
 | `PM-2026-145` | `INT-2026-150` | Managed roster-backed bots publish native round bot presence and are tracked independently per player for human-vs-bot and sim-vs-sim games. | Reapply per-player managed bot keys and `RoundBus.BotConnected` attach/cleanup signals after upstream round bus or challenge handoff changes. |
 | `PM-2026-146` | `INT-2026-151` | Account settings persist preferred feature-toggle defaults and round level presets apply them instead of blindly enabling all eligible features. | Reapply `evenchess.defaultFeatureToggles` form/JSON/settings UI and round preset application after upstream preference or round overlay changes. |
-| `PM-2026-149` | `INT-2026-154` | Round bootstrap uses persisted MMR contract Set Level and L0/default preferred Used Level, while roster-backed bot matches attach managed runners from the accepted game and redirect humans to full player URLs. | Reapply `evenchess.display` round JSON, case-tolerant policy player lookup, L0 used-level client fallback, accepted-game bot attachment, and full player-route redirects after upstream round JSON or challenge handoff changes. |
+| `PM-2026-149` | `INT-2026-154` | Round bootstrap uses persisted MMR contract Set Level, server-persisted monotonic Used Level, and L0/default preferred starting Used Level, while roster-backed bot matches attach managed runners from the accepted game and redirect humans to full player URLs. | Reapply `evenchess.display` round JSON, case-tolerant policy player lookup, `/evenchess/live/used-level`, L0 used-level client fallback, accepted-game bot attachment, and full player-route redirects after upstream round JSON or challenge handoff changes. |
+| `PM-2026-150` | `INT-2026-155` | Public search-key polling returns the cached game redirect even after matched tickets are retired from the active queue. | Reapply redirect-ledger lookup before active-ticket resume after upstream search-controller or lobby-polling changes. |
+| `PM-2026-151` | `INT-2026-156` | Local Test Ground pages opened through `localhost` use a same-origin websocket while LAN/mobile pages keep the LAN websocket. | Reapply local/private same-origin socket preference and PC-vs-mobile Test Ground URL split after upstream socket or launcher changes. |
+| `PM-2026-152` | `INT-2026-157` | Pinned pieces render with a top-left `P` marker and no lock/L terminology or padlock glyph. | Reapply pinned-piece `P` marker behavior after upstream round overlay renderer changes. |
+| `PM-2026-153` | `INT-2026-158` | Live round ECE bridge accepts newer threat board-fact payload shapes and retries high-level card-only payloads before settling. | Reapply ECE threat normalization and L2+ missing-visual retry behavior after upstream controller or round adapter changes. |
+| `PM-2026-154` | `INT-2026-159` | Per-game live display dropdown and feature toggles persist through browser refresh. | Reapply `/evenchess/live/display-state`, `StoredDisplayState`, round JSON toggle hydration, and round control persistence after upstream round/controller changes. |
+| `PM-2026-155` | `INT-2026-160` | Potential/proposed move controls and their text results live inside the main coach card. | Reapply the single-card coach composition and inline result sections after upstream round overlay or right-column style changes. |
+| `PM-2026-156` | `INT-2026-161` | Live coach cards expose an Auto Speak toggle beside the manual Speak button. | Reapply the adjacent Speak/Auto controls and live `autoSpeak` override after upstream round overlay or TTS control changes. |
 
 ### INT-2026-154 - V2 contract Set Level bootstrap and human-style bot redirect
 
 - Phase: V2 matchmaking/MMR and bot game-presentation hardening.
 - Lichess seam: Native round JSON bootstrap and native challenge-to-round redirect after EvenChess match-contract handoff.
-- Lichess files touched: `app/controllers/EvenChess.scala`; `modules/round/src/main/JsonView.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `conf/routes`; `modules/round/src/main/JsonView.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
 - EvenChess files touched: `modules/evenchess/src/main/GamePolicy.scala`; `modules/evenchess/src/test/GamePolicyTest.scala`; `modules/evenchess/src/test/PlaySearchIntegrationTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
-- Why this seam exists: EvenChess MMR assigns Set Levels server-side, but the live round client previously had no persisted per-player policy in its bootstrap and could fall back to L10. Username/UserId case normalization could also hide the stored policy for users such as `Admin`/`admin`. Bot-backed game creation also returned watcher URLs and attached the managed runner after an async lookup, which could create one-clock or opponent-left presentation during the first render.
-- Public UX effect: Preferred L6 searches should enter games showing the contract-assigned player Set Level rather than L10. Games with no explicit preferred starting Used Level initialize at L0. Roster-backed matchmaking/simulation bot games should render as normal human-vs-human rounds with both clocks and immediate bot presence.
+- Why this seam exists: EvenChess MMR assigns Set Levels server-side, but the live round client previously had no persisted per-player policy in its bootstrap and could fall back to L10. Username/UserId case normalization could also hide the stored policy for users such as `Admin`/`admin`. Browser refresh also needed a server-side per-game Used Level record so the monotonic Used Level bar cannot reset downward after a player raises it. Bot-backed game creation also returned watcher URLs and attached the managed runner after an async lookup, which could create one-clock or opponent-left presentation during the first render.
+- Public UX effect: Preferred L6 searches should enter games showing the contract-assigned player Set Level rather than L10. Games with no explicit preferred starting Used Level initialize at L0, and raising Used Level during the game survives browser refresh while remaining capped by Set Level. Roster-backed matchmaking/simulation bot games should render as normal human-vs-human rounds with both clocks and immediate bot presence.
 - Preserved Lichess capability: Native challenge acceptance, legal move processing, round clocks, player URLs, and round socket state remain Lichess-owned. ECL only supplies the match contract policy and managed bot presence/move runner.
 - Patch map entry: `PM-2026-149`.
-- Tests / checks: Added focused preferred-L6 bot fallback, case-tolerant policy player lookup, and L0 used-level initialization regression tests.
-- Upstream update notes: Preserve top-level `data.evenchess.display` in round player/watcher JSON, keep GamePolicy player lookup tolerant of username/UserId case normalization, never use account default Set Level as live game Set Level, keep no-preference Used Level fallback at L0, attach managed bots from accepted game data, and redirect matched humans to `Round.player(fullId)`.
+- Tests / checks: Added focused preferred-L6 bot fallback, case-tolerant policy player lookup, capped monotonic Used Level persistence, L0 used-level initialization, refresh-persistent Used Level, and Set-Level cap regression tests.
+- Upstream update notes: Preserve top-level `data.evenchess.display` in round player/watcher JSON, keep GamePolicy player lookup tolerant of username/UserId case normalization, never use account default Set Level as live game Set Level, keep no-preference Used Level fallback at L0, keep `/evenchess/live/used-level` max-only and Set-Level-capped, attach managed bots from accepted game data, and redirect matched humans to `Round.player(fullId)`.
 - Rollback notes: Reverting can restore L10/L10 display fallback for assigned lower-level games and can make bot-backed games look like watcher/computer/offline rounds.
+
+### INT-2026-155 - V2 matched search redirect survives ticket retirement
+
+- Phase: V2 matchmaking/search lifecycle hardening.
+- Lichess seam: Native lobby search JSON polling endpoint and native challenge-to-round redirect after EvenChess match-contract handoff.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `modules/evenchess/src/main/PlaySearchIntegration.scala`; `modules/evenchess/src/test/PlaySearchIntegrationTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The EvenChess controller must retire matched tickets after native game creation to prevent duplicate games, but the browser that did not create the game keeps polling with its opaque public search key. The redirect ledger now resolves public search keys to cached redirects before active-ticket resume, so retired tickets do not produce `Search ticket not found`.
+- Public UX effect: Two compatible users searching from different browsers/devices can both be redirected into the same created game after one side finalizes the native challenge handoff.
+- Preserved Lichess capability: Native challenge creation, challenge acceptance, game IDs, round URLs, and lobby polling remain Lichess-owned. ECL only stores the opaque search-key-to-redirect association.
+- Patch map entry: `PM-2026-150`.
+- Tests / checks: `PlaySearchIntegrationTest` covers redirect lookup for both sides after matched ticket retirement.
+- Upstream update notes: Preserve the search JSON action ordering: public search-key cached redirect lookup first, active ticket resume second, new ticket creation only when no public search key is supplied.
+- Rollback notes: Reverting can make the second polling browser/device lose the match redirect after the first side creates the game.
+
+### INT-2026-156 - Local LAN/localhost socket host preference
+
+- Phase: Local Test Ground deployment and two-device usability hardening.
+- Lichess seam: Native browser websocket URL selection and local Test Ground site launcher.
+- Lichess files touched: `ui/lib/src/socket.ts`.
+- EvenChess files touched: `scripts/evenchess-testground.ps1`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Local mobile testing needs the stack to advertise a LAN URL, but a PC browser often uses `localhost`. If the PC page connects its round socket to the LAN IP, host-scoped session cookies can be absent or inconsistent and live round pages can show `Reconnecting`, preventing computer/opponent events from arriving. The socket client now prefers the page's current host for loopback/private local hosts while preserving configured socket domains elsewhere.
+- Public UX effect: A PC browser can keep using `http://localhost:8080/` while a phone uses `http://<LAN-IP>:8080/`; both should keep authenticated round sockets and receive computer/opponent moves.
+- Preserved Lichess capability: Production socket-domain selection remains configured by the server. The same-origin override is limited to loopback/private local hosts.
+- Patch map entry: `PM-2026-151`.
+- Tests / checks: Local HTML inspection confirmed the page was advertising the LAN socket domain. TypeScript compile/build checks cover the socket code path.
+- Upstream update notes: Preserve the local/private same-origin socket preference if upstream rewrites `WsSocket.nextBaseUrl`, and keep Test Ground's PC open action independent from the LAN/mobile URL.
+- Rollback notes: Reverting can restore local PC `Reconnecting` when the stack is configured for mobile LAN access.
+
+### INT-2026-157 - Pinned-piece marker terminology and visual glyph
+
+- Phase: V2 overlay terminology and visual polish.
+- Lichess seam: Native round EvenChess board overlay renderer.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The pinned-piece overlay was conceptually correct but rendered the `pin` indicator through the Lichess padlock icon. EvenChess requirements now explicitly require pinned pieces to be represented as pins or `P`, never as locked pieces or lock/`L` markers.
+- Public UX effect: Pinned pieces display a top-left `P` badge on the pinned square instead of a padlock/locked-piece icon.
+- Preserved Lichess capability: Native board input and all non-EvenChess board overlays remain unchanged.
+- Patch map entry: `PM-2026-152`.
+- Tests / checks: The round overlay test asserts the `P` marker and rejects `Padlock` serialization.
+- Upstream update notes: Preserve the `P` marker in `boardOverlayIndicatorFromVisual` and do not route pinned-piece indicators through `licon.Padlock`.
+- Rollback notes: Reverting can make pinned pieces look like locked pieces again.
+
+### INT-2026-158 - Live ECE threat overlay adapter hardening
+
+- Phase: V2 overlay display reliability and local mobile/computer-game hardening.
+- Lichess seam: Native EvenChess controller ECE bridge and native round overlay request adapter.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/evenchessTestGround.ts`; `ui/round/tests/evenchessTestGround.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Live boards, including computer games on mobile, rely on the ECL controller to normalize ECE public side outputs into approved round overlay visuals. ECE can provide threat facts as nested student/opponent groups, direct overlay arrays, or flat board-fact entries using `attacking_side` plus source/target squares. The adapter now accepts those shapes and keeps them mapped to the existing student/opponent dotted-arrow features. The browser adapter also avoids accepting high-level card-only responses as final before retrying for board visuals.
+- Public UX effect: Threat arrows are less likely to disappear in live computer games because valid ECE threat facts are normalized across payload shapes, and partial high-level ECE responses get a short chance to fill board visuals before the UI settles.
+- Preserved Lichess capability: Native legal move handling, clocks, computer-game lifecycle, and round rendering remain Lichess-owned. Browser code still calls only ECL same-origin endpoints, never ECE directly.
+- Patch map entry: `PM-2026-153`.
+- Tests / checks: `ui/round/tests/evenchessTestGround.test.ts` covers low-level card-only acceptance and high-level card-only retry until board visuals arrive. A local board-overlay endpoint smoke check with a threat FEN returned both student and opponent threat visuals.
+- Upstream update notes: Preserve `threatArrayField`, `threatSideField`, expanded `fromTo` parsing, and the L2+ missing-visual retry cap if upstream rewrites the controller or round adapter.
+- Rollback notes: Reverting can make live computer/mobile boards miss threat arrows when ECE emits a newer board-fact threat shape or initially returns a partial card-only response.
+
+### INT-2026-159 - Per-game live display state survives round refresh
+
+- Phase: V2 live display state persistence hardening.
+- Lichess seam: Native round JSON bootstrap, EvenChess controller route table, and round overlay level/toggle controls.
+- Lichess files touched: `conf/routes`; `app/controllers/EvenChess.scala`; `modules/round/src/main/JsonView.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `modules/evenchess/src/main/GamePolicy.scala`; `modules/evenchess/src/test/GamePolicyTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The browser can change display-only controls during a game, but refresh reconstructs the round from server JSON. Persisting only Used Level meant the dropdown and feature toggles returned to the game-start defaults. The new display-state endpoint stores the player's per-game dropdown/toggle state alongside the existing game policy and serializes it back into `evenchess.display.toggles` on later bootstraps.
+- Public UX effect: Refreshing an EvenChess live/computer game keeps the current "Apply up to" dropdown and individual feature toggles for that player and game. Used Level still cannot decrease and Set Level remains server-authorized.
+- Preserved Lichess capability: Native round lifecycle, legal move handling, clocks, and normal game JSON remain Lichess-owned. ECL stores only EvenChess display state.
+- Patch map entry: `PM-2026-154`.
+- Tests / checks: `GamePolicyTest` covers display-state persistence without lowering Used Level. `evenchessOverlay.test.ts` covers round initialization from server-persisted toggles.
+- Upstream update notes: Preserve the authenticated `/evenchess/live/display-state` route, `StoredDisplayState`, `GamePolicyRepository.recordDisplayState`, and `evenchess.display.toggles` bootstrap JSON if upstream changes controller or round JSON structure.
+- Rollback notes: Reverting can make refresh reset the level dropdown and toggles to starting preferences even though Used Level remains persisted.
+
+### INT-2026-160 - Live coach card embeds potential/proposed controls
+
+- Phase: V2 coach surface polish.
+- Lichess seam: Native round overlay renderer and round stylesheet.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Potential Moves and Proposed Move are coach actions, but they were rendered as separate cards below the coach. The right column now keeps one main coach card, puts potential/proposed buttons in the bottom action area, and renders authorized potential/proposed text sections inside the coach text area after the main coach text.
+- Public UX effect: The coach surface reads as one integrated panel instead of three stacked add-on panels. Pressing potential/proposed controls keeps the resulting text in the coach content region while the controls remain anchored at the bottom.
+- Preserved Lichess capability: Native round board, move list, clocks, chat, and move input remain untouched.
+- Patch map entry: `PM-2026-155`.
+- Tests / checks: `evenchessOverlay.test.ts` asserts the controls are inside the coach card and no standalone proposed-control card appears in normal live play.
+- Upstream update notes: Preserve `evenchess-live__coach-text`, `evenchess-live__coach-actions`, and inline coach-result sections if upstream round side-panel styling changes.
+- Rollback notes: Reverting can bring back separate Potential Moves and Proposed Move cards below the coach card.
+
+### INT-2026-161 - Live coach card Auto Speak toggle
+
+- Phase: V2 coach TTS usability polish.
+- Lichess seam: Native round overlay renderer and round stylesheet.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The manual Speak button already lives in the native round coach-card header. Auto-read needed an adjacent in-game control that toggles the same `autoSpeak` flag consumed by the existing TTS scheduler when new coach text arrives.
+- Public UX effect: Players can turn automatic coach-card reading on or off from the live coach card without leaving the game. The persistent default and delay remain managed by EvenChess settings.
+- Preserved Lichess capability: Native round board, move input, clocks, and server-authorized TTS safety checks remain unchanged.
+- Patch map entry: `PM-2026-156`.
+- Tests / checks: `evenchessOverlay.test.ts` asserts the Auto control renders and that toggling updates the round TTS auto-read config.
+- Upstream update notes: Preserve `renderTtsAutoToggle`, `setEvenChessTtsAutoSpeakForData`, and `.evenchess-live__tts-auto` styling if upstream round header or TTS UI changes.
+- Rollback notes: Reverting removes the in-game Auto Speak control, leaving only the account settings toggle.
+
+### INT-2026-162 - Canonical ids for two-device public search handoff
+
+- Phase: V2 matchmaking/MMR public search reliability.
+- Lichess seam: Authenticated EvenChess public search JSON controller and native challenge/game handoff.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `modules/evenchess/src/test/PlaySearchIntegrationTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Local PC/mobile testing can use accounts whose display usernames preserve capitalization, while Lichess challenge acceptance and user lookup operate on canonical user ids. Public search tickets and redirect-ledger ownership now use `me.userId.value` so the MMR contract, public search-key polling, and native challenge handoff all reference the same server identity.
+- Public UX effect: Two authenticated users searching the same EvenChess format from separate devices should finalize into a native game instead of polling forever after the MMR layer finds a compatible contract.
+- Preserved Lichess capability: Native challenge/game creation, colors, clocks, game policy persistence, and redirect URLs remain Lichess-owned after EvenChess produces the match contract.
+- Patch map entry: `PM-2026-157`.
+- Tests / checks: `PlaySearchIntegrationTest` covers the logged phone/PC no-preference casual rapid 10+5 case with different starting set-level defaults.
+- Upstream update notes: Preserve canonical user-id ticket ownership in `search`, `searchJson`, public search-key lookup, and challenge handoff if upstream auth/controller code changes.
+- Rollback notes: Reverting can reintroduce case-sensitive display-username mismatches where Admin/Superadmin-style accounts match at MMR but never receive a game redirect.
+
+### INT-2026-163 - Potential-move reveal turn gating
+
+- Phase: V2 potential-move consumable and coach-action correctness.
+- Lichess seam: Native EvenChess controller ECE bridge and native round coach-card renderer.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Potential Moves are server-authorized coach actions, but the browser renders their buttons inside the native round coach card. Opponent potential moves must only be revealed on the opponent's turn, and student potential moves must only be revealed on the student's turn. The controller now rejects wrong-turn requests, and the round UI disables the wrong-turn button before a network call.
+- Public UX effect: Players see the available potential-move action for the current side to move and cannot spend or request the wrong potential-move reveal kind for the current turn.
+- Preserved Lichess capability: Native move input, clocks, round polling, and server-authorized ECE bridge behavior remain unchanged. Browser code still calls only ECL same-origin endpoints.
+- Patch map entry: `PM-2026-158`.
+- Tests / checks: `evenchessOverlay.test.ts` covers client-side wrong-turn blocking and opponent-turn request success.
+- Upstream update notes: Preserve `potentialMoveTurnAllowed`, server-side `not_opponent_turn`, and existing `not_your_turn` checks if upstream controller or round coach controls change.
+- Rollback notes: Reverting can allow wrong-turn potential requests, including opponent potentials on the player's turn.
+
+### INT-2026-164 - Public search game-handoff diagnostics
+
+- Phase: V2 matchmaking/MMR public search reliability.
+- Lichess seam: Native EvenChess public search controller and native challenge/game creation handoff.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: A live PC/phone search showed `matchmaking.matched=true` and a valid MMR contract while `redirectUrl=null`. That means the MMR pairing layer had succeeded, but the native Lichess challenge/game handoff returned no game redirect. The controller previously swallowed `challenge.create=false`, `challenge.accept=None`, accept exceptions, and missing user lookup cases as plain `None`, leaving the UI polling forever without an actionable reason.
+- Public UX effect: No visible UX change. Local/server logs now expose a throttled safe reason for matched searches that cannot create a native game, so the handoff can be fixed without guessing.
+- Preserved Lichess capability: Native challenge creation, challenge acceptance, game policy persistence, and redirect ledger behavior remain unchanged.
+- Patch map entry: `PM-2026-159`.
+- Tests / checks: `./lila.sh 'compile'` passed. Live pre-restart evidence showed one Admin-owned search response with a valid contract and no redirect; after restart no fresh search requests arrived during the monitoring window.
+- Upstream update notes: Preserve throttled diagnostics around challenge creation and acceptance when changing `maybeCreateMatchedGameRedirect` or `createHumanMatchedGameRedirect`.
+- Rollback notes: Reverting removes the diagnostic and makes matched-but-not-redirected searches opaque again.
+
+### INT-2026-165 - ECE 06 Jun 2026 call-contract alignment
+
+- Phase: V2 ECL-to-ECE gateway contract maintenance.
+- Lichess seam: Native EvenChess controller routes, server-to-server ECE HTTP envelopes, gateway config, and local Test ECE fixture.
+- Lichess files touched: `conf/routes`; `app/controllers/EvenChess.scala`; `ui/round/src/evenchessTestGround.ts`.
+- EvenChess files touched: `modules/evenchess/src/main/EngineGateway.scala`; `modules/evenchess/src/test/EngineGatewayTest.scala`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: ECE's 06 Jun 2026 contract keeps route URLs stable but changes call semantics. Proposed ECS now expects `input_fen` plus canonical `proposed_move_san`; Advanced ECS may be polled by `advanced_job_id`; Performance ECS is now `/v1/ece/performance-summary`. ECL owns the browser-safe bridge, so it must derive SAN from FEN+arrow server-side, pass async deep job IDs safely, and expose performance summary only through same-origin ECL routes.
+- Public UX effect: Proposed Move requests are less likely to be rejected by new ECE because ECL sends canonical SAN derived from the current board. Deep/advanced addenda can degrade without clearing quick output when async work is pending. Performance-summary diagnostics can be tested through the ECL bridge.
+- Preserved Lichess capability: Native round move input, board legality, clocks, and browser privacy boundaries remain unchanged. Browser code still calls only ECL same-origin endpoints and never ECE analysis endpoints directly.
+- Patch map entry: `PM-2026-160`.
+- Tests / checks: `EngineGatewayTest` covers endpoint config, async deep request handles, and SAN/UCI proposed-move validation. `scripts/evenchess-test-ece-server.test.mjs` covers Test ECE quick/deep/proposed/full-match/match-summary/performance-summary route shapes.
+- Upstream update notes: Preserve `sanForProposedMove`, `advanced_job_id` support, `performanceSummaryUrl`, and the same-origin `/evenchess/testground/ece/performance-summary` route when moving the ECE bridge out of the controller.
+- Rollback notes: Reverting can make real ECE proposed-move calls fail under the SAN-canonical contract, lose async Advanced ECS addenda, and leave performance-summary testing without an ECL bridge.
+
+### INT-2026-166 - Threat-line adapter and overlay stacking hardening
+
+- Phase: V2 display-engine reliability.
+- Lichess seam: Native EvenChess controller ECE payload adapter and native round board-overlay stylesheet.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: ECE-compatible threat board facts may arrive under equivalent alias fields or nested move/attack/arrow objects, while the browser board layer must draw EvenChess dotted threat arrows above Chessground SVGs across desktop and mobile. The controller now normalizes more threat shapes into the same student/opponent arrow families, and the round stylesheet raises the custom overlay to Lichess's board-overlay z-index tier while preserving `pointer-events: none`.
+- Public UX effect: Student and opponent threat lines should appear more consistently on mobile and desktop when the payload contains level-allowed threats and the corresponding toggles are on.
+- Preserved Lichess capability: Native board input, piece dragging, Chessground shapes, and round clocks remain unchanged.
+- Patch map entry: `PM-2026-161`.
+- Tests / checks: `pnpm exec tsx --test ui/round/tests/evenchessOverlay.test.ts` passed; `./lila.sh "compile"` passed through Docker fallback.
+- Upstream update notes: Preserve `threatArrayField`, nested threat move extraction, and `.evenchess-board-overlay` z-index behavior if upstream board rendering changes.
+- Rollback notes: Reverting can make valid ECE threat facts disappear when they use alternate shapes or can leave arrows hidden behind board SVG layers in some layouts.
+
+### INT-2026-167 - Per-game level and toggle refresh persistence
+
+- Phase: V2 live display-state persistence.
+- Lichess seam: Native EvenChess live display-state controller endpoints and native round overlay renderer.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The user-facing level selector and feature toggles live in the round UI, but the per-game Used Level and display state must be authoritative and reloadable from the server. The save path now writes with canonical user ids, accepts the server's saved display-state echo, and keeps the "Apply up to" dropdown tied to the applied preset level instead of deriving it from whichever toggles are currently enabled.
+- Public UX effect: Refreshing a live game should keep the current level selection, per-feature toggles, and monotonic Used Level until the player changes them in that game.
+- Preserved Lichess capability: Native round board, move input, clocks, and server-authenticated round bootstrap remain unchanged.
+- Patch map entry: `PM-2026-162`.
+- Tests / checks: `evenchessOverlay.test.ts` covers refreshed Used Level and applied-level dropdown behavior; `GamePolicyTest` covers monotonic server Used Level/display state; `./lila.sh "compile"` passed.
+- Upstream update notes: Preserve `recordDisplayState`, `recordUsedLevel`, canonical user-id usage, and `appliedEvenChessDisplayLevel` if upstream round/controller code changes.
+- Rollback notes: Reverting can make browser refresh fall back to account defaults or infer the selector from toggles, causing the level/toggle UI to appear to reset mid-game.
+
+### INT-2026-168 - Live opponent Set/Used Level display
+
+- Phase: V2 live policy display.
+- Lichess seam: Native round JSON bootstrap, native same-origin ECE bridge response, and native EvenChess round overlay renderer.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `modules/round/src/main/JsonView.scala`; `ui/round/src/interfaces.ts`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Live players need to see both sides' EvenChess policy state, but Set Level and Used Level are server-owned per-game values. The round bootstrap and live overlay response now serialize the opponent's Set Level and current Used Level from the stored EvenChess policy/display state, and the level card displays those values without client-side inference.
+- Public UX effect: In a live EvenChess game, the level card shows the local player's Set/Used Levels and the opponent's Set/Used Levels when policy data exists.
+- Preserved Lichess capability: Native round board, move input, clocks, and authenticated round bootstrap remain unchanged.
+- Patch map entry: `PM-2026-163`.
+- Tests / checks: `evenchessOverlay.test.ts` verifies opponent Set/Used Level rendering in the live level card and live overlay refresh updates.
+- Upstream update notes: Preserve `evenchess.display.opponent` in round JSON, optional `live.display.opponent` in live overlay payloads, and the level-card opponent pills if upstream round JSON, ECE bridge, or overlay headers change.
+- Rollback notes: Reverting hides opponent level state from the live card even though the local player's levels remain visible.
+
+### INT-2026-169 - Disabled level dropdown options are visibly greyed
+
+- Phase: V2 live level-control polish.
+- Lichess seam: Native EvenChess round overlay renderer and round stylesheet.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The live "Apply up to" dropdown is capped by the server-authorized Set Level, but disabled options above that cap need to look unavailable in the dark dropdown. The renderer now adds explicit disabled metadata and classing, and the stylesheet greys out disabled options.
+- Public UX effect: Players can see which higher levels are unavailable before trying to select them.
+- Preserved Lichess capability: Native round board, clocks, move input, and server-owned Set Level remain unchanged.
+- Patch map entry: `PM-2026-164`.
+- Tests / checks: `evenchessOverlay.test.ts` verifies disabled/classed/titled/aria-disabled dropdown options above Set Level.
+- Upstream update notes: Preserve disabled option styling and metadata if the level dropdown or round stylesheet is changed.
+- Rollback notes: Reverting can make disabled levels appear selectable even though the browser still blocks selection.
+
+### INT-2026-170 - Mobile-safe TTS and text-change-only auto-read
+
+- Phase: V2 live coach TTS hardening.
+- Lichess seam: Shared browser TTS helper and native EvenChess round coach-card renderer.
+- Lichess files touched: `ui/lib/src/evenchessTts.ts`; `ui/lib/tests/evenchessTts.test.ts`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/tests/evenchessOverlay.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Live TTS is controlled by EvenChess policy but executed through browser speech synthesis. Mobile browsers are stricter about `window` speech APIs and resume state, and the live coach card must keep Speak/Auto controls available during opponent turns when the text is safe. Auto-read also needs to follow displayed text changes, not payload/audit churn.
+- Public UX effect: Mobile browsers have a more compatible speech driver path, manual Speak and Auto remain usable on opponent turns, and unchanged coach text is not spoken again just because the payload updated.
+- Preserved Lichess capability: Native round board, move input, clocks, and server-authorized coach text remain unchanged.
+- Patch map entry: `PM-2026-165`.
+- Tests / checks: `evenchessTts.test.ts` covers opponent-turn availability and mobile-safe driver behavior; `evenchessOverlay.test.ts` covers unchanged-text auto-read suppression.
+- Upstream update notes: Preserve `window.SpeechSynthesisUtterance`, `speechSynthesis.resume()`, opponent-turn availability, and normalized text auto-read keys if upstream TTS or round overlay code changes.
+- Rollback notes: Reverting can make mobile TTS fail more often, disable controls on opponent turns, and repeat unchanged coach text after payload-only updates.
+
+### INT-2026-171 - Executed premoves skip live ECE refresh
+
+- Phase: V2 live ECE timing hardening.
+- Lichess seam: Native round controller premove execution path and EvenChess same-origin ECE overlay request helper.
+- Lichess files touched: `ui/round/src/ctrl.ts`; `ui/round/src/evenchessTestGround.ts`; `ui/round/tests/evenchessTestGround.test.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Chessground premoves are committed inside native round move handling immediately after the opponent's move, while EvenChess ECE refreshes are triggered from the same position-change flow. ECE should not be called for a transient post-opponent-move position that immediately auto-commits a premove, nor for the committed premove acknowledgement, but failed/cancelled premoves still need the normal current-position ECE refresh.
+- Public UX effect: Executed premoves do not spend ECE work or produce stale coaching for a move the player already committed before seeing the opponent's reply. Normal move updates and failed premove positions continue to refresh.
+- Preserved Lichess capability: Native premove setting, cancelling, execution, predrops, move submission, clocks, and notifications remain in the native round flow.
+- Patch map entry: `PM-2026-166`.
+- Tests / checks: `evenchessTestGround.test.ts` verifies skipped premove positions do not fetch and stale in-flight ECE responses do not requeue them.
+- Upstream update notes: Preserve `evenChessCommittedPremoveUci`, delayed post-opponent ECE refresh, and `skipReason: 'executed-premove'` handling if upstream round premove or overlay-request code changes.
+- Rollback notes: Reverting can cause ECE calls to run for positions created only by committed premove timing, including stale transient positions.
+
+### INT-2026-172 - Position ECS Ask AI live coach action
+
+- Phase: V2 live Position ECS integration.
+- Lichess seam: Native EvenChess controller ECE bridge, native round coach-card renderer, ECE test harness, and EvenChess gateway config.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `conf/routes`; `modules/evenchess/src/main/EngineGateway.scala`; `ui/round/src/evenchessTestGround.ts`; `ui/round/src/interfaces.ts`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`; `modules/evenchess/src/test/EngineGatewayTest.scala`; `ui/round/tests/evenchessOverlay.test.ts`; `ui/round/tests/evenchessTestGround.test.ts`.
+- Why this seam exists: ECE Advanced ECS now stays deterministic/provider-backed, while optional live AI text is requested through Position ECS. The browser must not call ECE directly, so ECL owns a same-origin `/evenchess/testground/ece/position-ecs` bridge that enforces per-game own-move token accrual from the player's Used Level before posting to ECE `/v1/ece/position`. The round coach card exposes an Ask AI button, shows used/accrued counts, and toggles cached Position ECS text for the same FEN without spending another call.
+- Public UX effect: Players at L4+ can ask for AI coaching only after enough of their own moves have accrued an allowance. L0-L3 cannot use Ask AI, L4 accrues one call every ten own moves, and L10 accrues one every four own moves. Advanced ECS board-state payloads remain deterministic and do not spend or invoke live AI.
+- Preserved Lichess capability: Native round board, clocks, move input, deterministic coach payloads, potential moves, proposed moves, and server-authorized display gating remain unchanged.
+- Patch map entry: `PM-2026-167`.
+- Tests / checks: `EngineGatewayTest.scala`, `evenchessOverlay.test.ts`, `evenchessTestGround.test.ts`, and `evenchess-test-ece-server.test.mjs` were updated for Position ECS request/response shape, same-origin routing, and level-based accrual.
+- Upstream update notes: Preserve `positionPath`/`positionUrl`, ECL server-side allowance enforcement, cached same-position toggle behavior, and the rule that `ai_text` is not an Advanced ECS deep board-state module.
+- Rollback notes: Reverting removes live Ask AI support and can accidentally reintroduce Advanced ECS AI-text assumptions that conflict with the ECE 06 Jun 2026 contract.
+
+### INT-2026-173 - Potential ECS replaces Advanced ECS candidate reveal
+
+- Phase: V2 live Potential ECS integration.
+- Lichess seam: Native EvenChess controller ECE bridge, EvenChess gateway config, and ECE test harness.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `modules/evenchess/src/main/EngineGateway.scala`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`; `modules/evenchess/src/test/EngineGatewayTest.scala`.
+- Why this seam exists: ECE moved potential/candidate moves out of Advanced ECS and into `POST /v1/ece/potential`. The browser still needs a same-origin reveal button flow, so ECL now authorizes and accounts for the reveal before making the server-to-server Potential ECS call. Board-state/Advanced ECS payloads remain free of unrevealed potential-move data.
+- Public UX effect: Opponent/My Potential Moves continue to work through the existing coach-card buttons, but the source data now comes from Potential ECS for the FEN side to move. Unavailable, low-level, or missing-Stockfish responses fail without changing the normal board overlay.
+- Preserved Lichess capability: Native board, clocks, move input, proposed-move previews, Position ECS Ask AI, and normal board-state ECE refresh remain unchanged.
+- Patch map entry: `PM-2026-168`.
+- Tests / checks: `EngineGatewayTest.scala` covers Potential ECS request/config shape. `evenchess-test-ece-server.test.mjs` covers `/v1/ece/potential` and verifies deep board addenda no longer expose candidate moves.
+- Upstream update notes: Preserve `potentialPath`/`potentialUrl`, the same-origin reveal gate, turn-side validation from current FEN, and the rule that browser code must not call ECE Potential ECS directly.
+- Rollback notes: Reverting can make Potential Move buttons depend on stale Advanced ECS candidate fields that the current ECE contract no longer returns.
+
+### INT-2026-174 - Standard ECS live bridge and Position ECS eval source
+
+- Phase: V2 live ECE contract migration.
+- Lichess seam: Native EvenChess controller ECE bridge, EvenChess gateway config, native round coach-card renderer, and local ECE test harness.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `modules/evenchess/src/main/EngineGateway.scala`; `ui/round/src/interfaces.ts`; `ui/round/src/evenchessTestGround.ts`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`; `modules/evenchess/src/test/EngineGatewayTest.scala`; `modules/evenchess/src/test/LiveCoachingTest.scala`; `ui/round/tests/evenchessOverlay.test.ts`; `ui/round/tests/evenchessTestGround.test.ts`.
+- Why this seam exists: ECE no longer exposes live board-state as Initial/Advanced quick/deep. ECL now calls Standard ECS every move for deterministic overlays/text, stores any returned `position_ecs_id`, and uses Position ECS only when Ask AI is authorized so the AI replacement text and provider eval can temporarily replace the Standard coach payload.
+- Public UX effect: Normal live coaching remains fast and deterministic each move. Eval and AI coaching update only when the user spends or toggles an allowed Ask AI result, so the eval bar does not snap to placeholder Standard values.
+- Preserved Lichess capability: Native board, clocks, move input, proposed-move preview, Potential ECS reveal buttons, full-game summaries, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-169`.
+- Tests / checks: Gateway, live coaching, Test Ground, overlay, and local Test ECE tests cover Standard ECS, Position ECS context propagation, and Position ECS eval rendering.
+- Upstream update notes: Preserve `standardPath`/`standardUrl`, `position_ecs_id` passthrough, Position ECS-only eval acceptance, and the absence of deep-module board-state merging.
+- Rollback notes: Reverting can reintroduce stale quick/deep calls that current ECE no longer treats as the canonical live board-state contract.
+
+### INT-2026-175 - Potential ECS current-position eval source
+
+- Phase: V2 live Potential ECS eval integration.
+- Lichess seam: Native EvenChess controller ECE bridge and native EvenChess round overlay renderer.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`; `ui/round/tests/evenchessOverlay.test.ts`.
+- Why this seam exists: ECE Potential ECS now returns `potential_ecs.evaluation` as the current-position Stockfish eval for an authorized potential-move reveal. Browser code still must not call ECE directly, so the controller sanitizes that eval into the same approved display payload model used by Position ECS/proposed-move eval, while the round renderer treats active Potential ECS as a transient eval source.
+- Public UX effect: When the player spends or toggles a Potential Moves reveal at an eval-enabled level, the eval bar and coach eval strip update from `potential_ecs.evaluation`. Candidate move scores remain per-move details and do not drive the overall eval bar. After the board changes, the eval bar clears until a fresh Potential ECS, Position ECS, or proposed-move eval result is active.
+- Preserved Lichess capability: Native round board, clocks, move input, deterministic Standard ECS coaching, proposed-move preview, Position ECS Ask AI, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-170`.
+- Tests / checks: `evenchess-test-ece-server.test.mjs` covers the Potential ECS current eval fixture. `evenchessOverlay.test.ts` covers active-reveal eval rendering, board-change clearing, and no Standard/live eval carryover.
+- Upstream update notes: Preserve `potential_ecs.evaluation` as the only Potential ECS overall eval source and keep `potential_ecs.moves[*].score` out of eval-bar logic.
+- Rollback notes: Reverting can make Potential Moves reveal candidate moves without updating eval, or can reintroduce stale Standard/live eval display between moves.
+
+### INT-2026-176 - Top-bar EvenChess Help popup
+
+- Phase: V2 public shell/top-bar polish.
+- Lichess seam: Shared site header buttons/dropdowns and header CSS.
+- Lichess files touched: `modules/web/src/main/ui/layout.scala`; `ui/lib/css/header/_buttons.scss`.
+- EvenChess files touched: `modules/evenchess/src/main/PublicShell.scala`; `modules/evenchess/src/test/PublicShellTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The player-facing help entry belongs in the native top bar beside the existing search/account/token controls, while the guide copy remains EvenChess-owned and testable. The dropdown uses the existing Lichess toggle/dropdown behavior and adds only EvenChess-specific copy and styling.
+- Public UX effect: Users can open a brief scrollable "EvenChess Help" guide from the top bar explaining levels, matchmaking, ECR fairness, platform-only coaching, and token/plan limits.
+- Preserved Lichess capability: Native top-bar search, notifications, token balance, account dasher, anonymous dasher, and existing dropdown behavior remain unchanged.
+- Patch map entry: `PM-2026-171`.
+- Tests / checks: `PublicShellTest.scala` covers guide copy safety and content scope.
+- Upstream update notes: Preserve the `evenchess-help` top-bar item, dropdown scroll constraints, and `PublicShell.PublicCopy` ownership when merging future header changes.
+- Rollback notes: Reverting removes the in-context public explanation surface and leaves players dependent on homepage/landing copy for level and matchmaking basics.
+
+### INT-2026-177 - Live display toggle overlay stability
+
+- Phase: V2 live display controls hardening.
+- Lichess seam: Native EvenChess round overlay renderer and browser-side per-game display-state persistence.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Live toggles must filter the already approved ECE payload immediately without clearing unrelated overlays, while higher-level toggle use can still raise Used Level and request a richer Standard ECS payload in the background. Display-state persistence responses are acknowledgements and must not overwrite newer local toggle choices.
+- Public UX effect: Turning individual level-card toggles on/off hides or shows only the mapped board/coach items. Existing safe board overlays stay visible while a higher-level Standard ECS refresh catches up.
+- Preserved Lichess capability: Native board input, clocks, move flow, Standard ECS refresh, proposed/potential/Ask AI controls, and persisted per-game Used Level remain unchanged.
+- Patch map entry: `PM-2026-172`.
+- Tests / checks: `evenchessOverlay.test.ts` covers coach-only/higher-level toggle changes preserving current board visuals and stale/sparse persistence acknowledgements not erasing local feature toggles.
+- Upstream update notes: Preserve conservative display-state acknowledgement merging and in-place board overlay filtering when future round-overlay changes touch level-card controls.
+- Rollback notes: Reverting can make toggles or late persistence responses blank current overlays or roll the visible level/toggle state backward while a refresh is in flight.
+
+### INT-2026-178 - Ask AI coach-card action visibility
+
+- Phase: V2 Position ECS action discoverability.
+- Lichess seam: Native EvenChess round overlay renderer and live coach-card action stack.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Position ECS is an explicit user action, but the live coach-card controls previously placed the `Ask AI` action after Potential Moves and Proposed Move. The action now appears first in the coach-card action area and stays visible with status text even before a use is earned.
+- Public UX effect: Players can see where to request AI coaching/eval, and unavailable states explain availability as `Available in X moves` or `Available at Level 4+` instead of making the feature look absent.
+- Preserved Lichess capability: Native board input, clocks, Standard ECS updates, Potential ECS reveals, Proposed Move previews, TTS, and server-side Position ECS authorization remain unchanged.
+- Patch map entry: `PM-2026-173`.
+- Tests / checks: `evenchessOverlay.test.ts` covers action ordering and the disabled-but-visible pre-accrual state.
+- Upstream update notes: Preserve the `Ask AI` first action order and visible status text when future coach-card action layout changes.
+- Rollback notes: Reverting can make Position ECS appear missing to users even though the backend action exists.
+
+### INT-2026-179 - Proposed Move post-move Standard ECS preview payload
+
+- Phase: V2 Proposed ECS contract alignment.
+- Lichess seam: Native EvenChess controller ECE proposed-move bridge and local Test ECE fixture.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `scripts/evenchess-test-ece-server.js`; `scripts/evenchess-test-ece-server.test.mjs`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Proposed Move previews should show the same deterministic board/coach payload the player would see if the move happened. ECL now prefers `proposed_move_evaluation.after_move_standard_ecs` with normal Standard ECS `side_outputs`, while still accepting the legacy `after_move_side_output` migration shortcut.
+- Public UX effect: Pressing Proposed Move displays the hypothetical after-move overlay/cards from the Standard ECS-style payload. Pressing it again toggles back to the cached current-FEN payload, and pressing again re-shows the cached proposed preview without spending another call.
+- Preserved Lichess capability: Native board input, current-position Standard ECS history, proposed-move quota accounting, illegal-arrow preservation, Potential ECS, Position ECS, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-174`.
+- Tests / checks: Existing `evenchessOverlay.test.ts` covers proposed preview toggle/cache behavior. `evenchess-test-ece-server.test.mjs` covers the Test ECE `after_move_standard_ecs` fixture. Full Scala `./lila.sh compile` passed.
+- Upstream update notes: Preserve Standard ECS-first proposed preview parsing and the legacy fallback until ECE no longer emits `after_move_side_output`.
+- Rollback notes: Reverting can make proposed previews lose the full hypothetical Standard payload and only display text or legacy partial side-output data.
+
+### INT-2026-180 - Live coach TTS visible-text and auto-delta alignment
+
+- Phase: V2 live coach TTS polish.
+- Lichess seam: Native EvenChess round overlay renderer and live coach-card TTS controls.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The coach card now displays base Standard/Ask AI text plus inline Proposed Move and Potential Moves result text inside one coach text area. Manual and Auto TTS must use the allowed spoken subset while still passing the shared TTS safety check.
+- Public UX effect: Manual Speak reads the base coach text plus active Ask AI and Proposed Move content. Potential Moves text remains visual-only. Auto Speak reads only newly appended Proposed Move text, reads replacement Ask AI text when the summary is replaced, and does not re-read the old normal summary just because an inline result is toggled off.
+- Preserved Lichess capability: Native round board, move input, clocks, coach-card layout, server-authorized TTS safety policy, and user TTS settings remain unchanged.
+- Patch map entry: `PM-2026-175`.
+- Tests / checks: `evenchessOverlay.test.ts` covers full visible-text TTS composition and auto-delta text selection.
+- Upstream update notes: Preserve `liveCardTtsItem`, `coachInlineResultTtsTexts`, and the auto-delta state fields if future round coach-card rendering or TTS controls change.
+- Rollback notes: Reverting can make TTS speak text that differs from the intended spoken source, read Potential Moves option text, or auto-read the entire coach card instead of only the added/replaced text.
+
+### INT-2026-181 - ECE-owned coach text length
+
+- Phase: V2 ECE adapter/display contract hardening.
+- Lichess seam: Native EvenChess controller ECE parser and EvenChess Display Engine renderability.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `modules/evenchess/src/main/CoachingOverlays.scala`; `modules/evenchess/src/main/LiveOverlayUi.scala`; `modules/evenchess/src/test/CoachingOverlaysTest.scala`; `modules/evenchess/src/test/LiveOverlayUiTest.scala`; `modules/evenchess/src/test/EceLiveBridgeTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: ECL must sanitize ECE public payloads before they become round payloads, but ECE now owns coach text length. The parser no longer truncates Summary/Plan/Warning/Ask AI/Proposed Move text, and Display Engine compact text budgets are advisory metadata rather than renderability gates.
+- Public UX effect: Longer ECE-authored coach text can display and be read by TTS without being locally cut off or suppressed by ECL character budgets.
+- Preserved Lichess capability: Native round board, clocks, move input, server authorization, forbidden-field redaction, bounded UI labels/ids/audit ids/error messages, and fixed-size potential-move option limits remain unchanged.
+- Patch map entry: `PM-2026-176`.
+- Tests / checks: `EceLiveBridgeTest.scala` covers long ECE summary rendering. `CoachingOverlaysTest.scala` and `LiveOverlayUiTest.scala` cover advisory budget behavior.
+- Upstream update notes: Preserve ECE-owned coach text length in future controller parser and Display Engine changes; do not reintroduce local `.take(...)` caps for coach body fields.
+- Rollback notes: Reverting can truncate ECE coach text or suppress otherwise safe long ECE cards before the player sees them.
+
+### INT-2026-182 - Failed ECE action calls do not consume assistance uses
+
+- Phase: V2 ECE action accounting hardening.
+- Lichess seam: Native EvenChess controller same-origin action routes for Proposed Move, Potential ECS, and Position ECS / Ask AI.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: ECL owns browser-safe routing and per-game quota accounting for consumable ECE actions. A failed transport call, unavailable ECE result, parser rejection, forbidden-field rejection, `ok:false`, or otherwise non-displayable action payload must not decrement the player's Proposed Move, Potential Moves, or Ask AI allowance.
+- Public UX effect: Players keep their consumable uses when ECE fails or returns no approved display payload. The browser receives the current server-side count instead of a consumed use.
+- Preserved Lichess capability: Native round board, move input, clocks, legal-arrow validation, cached successful action replay, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-177`.
+- Tests / checks: Focused Scala compile validates the changed controller route/helper shape. A future controller harness should assert rejected action responses return without changing consumed counts.
+- Upstream update notes: Preserve `approvedDisplayPayload` / `serverAuthorized` gating before any action payload is cached or counted.
+- Rollback notes: Reverting can consume player allowances when ECE is unavailable or returns a non-displayable action result.
+
+### INT-2026-183 - Admin unlimited action-token debug setting
+
+- Phase: V2 debug/admin assistance-token bypass.
+- Lichess seam: Native `/dev/settings` setting store, native EvenChess controller action routes, and native round overlay action counters.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `app/controllers/Dev.scala`; `modules/web/src/main/Env.scala`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/src/evenchessTestGround.ts`; `ui/round/src/interfaces.ts`.
+- EvenChess files touched: `modules/evenchess/src/main/AdminBackendSettings.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Admins need a local/staged debug switch to test Ask AI, Potential ECS, and Proposed Move repeatedly without exhausting per-game action allowances or waiting for Ask AI move accrual. The bypass must be decided server-side from the authenticated admin/settings context, while the round UI needs the server quota marker to show `Unlimited`.
+- Public UX effect: Non-admin users remain on normal quotas. Admin/settings users with the debug setting enabled can repeatedly use eligible action buttons and see `Unlimited` counters.
+- Preserved Lichess capability: Native round board, clocks, move input, current-FEN checks, legal-arrow validation, side/turn checks, Set Level gates, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-178`.
+- Tests / checks: Focused Scala compile and TypeScript overlay checks should validate the changed setting snapshot, controller helper signatures, and UI quota display.
+- Upstream update notes: Preserve the `Admin unlimited tokens` setting as admin-only and server-authoritative if action route or setting-store seams change.
+- Rollback notes: Reverting removes the admin debug bypass and returns admins to normal action quotas and Ask AI move-accrual waits.
+
+### INT-2026-184 - Ask AI own-turn enforcement
+
+- Phase: V2 Position ECS / Ask AI authorization hardening.
+- Lichess seam: Native EvenChess controller same-origin Position ECS route and native round overlay Ask AI button.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Ask AI is a same-origin ECL action backed by Position ECS. It must be available only to the student/requester when that side is to move, and the backend must enforce that before cached result replay or ECE transport.
+- Public UX effect: The Ask AI button remains visible off-turn but disabled with `Available on your turn`; direct off-turn calls return a safe `not_requester_turn` response without consuming allowance.
+- Preserved Lichess capability: Native round board, clocks, move input, normal Standard ECS updates, TTS, Potential ECS turn gates, Proposed Move legal-arrow/turn gates, admin unlimited quotas, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-179`.
+- Tests / checks: `evenchessOverlay.test.ts` covers off-turn status and no client fetch.
+- Upstream update notes: Preserve Ask AI own-turn gating if the coach-card action stack or Position ECS route changes.
+- Rollback notes: Reverting can allow cached or direct Ask AI calls during the opponent turn.
+
+### INT-2026-185 - Coach action button copy and sizing
+
+- Phase: V2 live coach-card UI polish.
+- Lichess seam: Native EvenChess round overlay coach-card action stack.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The live coach card owns the Ask AI, Potential ECS, and Proposed Move controls. Their copy and button sizing need to be polished in the same render/CSS path that already enforces action availability and server-authorized requests.
+- Public UX effect: The extra `Potential Moves` heading is removed. The action labels read `Ask AI`, `Show Opponents potential moves`, `Show my potential moves`, and `Assess my proposed move`, and the four buttons use a shared width.
+- Preserved Lichess capability: Native board input, clocks, Standard ECS refresh, Potential ECS turn gates, Proposed Move preview, Ask AI / Position ECS gating, and TTS remain unchanged.
+- Patch map entry: `PM-2026-180`.
+- Tests / checks: `evenchessOverlay.test.ts` covers the labels, order, and removed heading.
+- Upstream update notes: Preserve the simplified action stack if future coach-card rendering changes.
+- Rollback notes: Reverting restores the shorter labels, uneven action button widths, and duplicate Potential Moves heading.
+
+### INT-2026-186 - Coach Draw mode for proposed-move input
+
+- Phase: V2 mobile/desktop proposed-move input.
+- Lichess seam: Native round Chessground controller input routing and EvenChess coach-card header.
+- Lichess files touched: `ui/round/src/ctrl.ts`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Mobile browsers do not expose the native desktop right-click drawing gesture needed for proposed-move arrows. The coach-card Draw toggle must switch board pointer/touch input into green Chessground shape creation without weakening server-side proposed-move validation.
+- Public UX effect: Players can press `Draw`, touch/click-drag the board to create a green arrow or tap/click one square for a green circle, then press `Assess my proposed move`. While Draw is active, board touch scrolling and piece movement are disabled; turning Draw off restores normal move input.
+- Preserved Lichess capability: Native right-click drawing, normal piece movement, premoves, legal-arrow validation, proposed-move quotas, current-FEN checks, and server-to-server ECE privacy remain unchanged when Draw mode is off.
+- Patch map entry: `PM-2026-181`.
+- Tests / checks: `evenchessOverlay.test.ts` covers the Draw button and active render state. Controller gesture behavior is validated through focused TypeScript/style checks.
+- Upstream update notes: Preserve `getKeyAtDomPos`, `setShapes`, movement-disable, and `blockTouchScroll` use if Chessground input plumbing changes.
+- Rollback notes: Reverting leaves mobile users without a reliable way to draw the green proposed-move arrow.
+
+### INT-2026-187 - Mobile-safe EvenChess browser TTS driver
+
+- Phase: V2 live coach TTS mobile compatibility.
+- Lichess seam: Shared browser UI TTS driver used by the native EvenChess round coach-card controls.
+- Lichess files touched: `ui/lib/src/evenchessTts.ts`.
+- EvenChess files touched: `ui/lib/tests/evenchessTts.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Mobile browsers can fail to play Web Speech output when a user tap is preceded by unnecessary cancellation, when synthesis is paused, or when the first utterance is dropped before starting. The shared EvenChess TTS driver must handle that without weakening the safety rule that speech text equals visible authorized coach text.
+- Public UX effect: Manual Speak on mobile preserves the tap activation, resumes browser speech, uses the selected/default voice safely, and retries once if the browser drops the first utterance. Auto Speak continues to use the same driver after it has been enabled/unlocked by user interaction.
+- Preserved Lichess capability: Native round controls, TTS authorization checks, unsafe-payload filtering, visible-text matching, and user TTS settings remain unchanged.
+- Patch map entry: `PM-2026-182`.
+- Tests / checks: `evenchessTts.test.ts` covers the mobile-safe driver behavior.
+- Upstream update notes: Preserve the no-op cancel guard, resume-before-speak, language fallback, and one-shot retry behavior if shared browser speech code changes.
+- Rollback notes: Reverting can make mobile Speak fail silently again even while desktop browser speech works.
+
+### INT-2026-188 - EvenChess Help level ladder copy
+
+- Phase: V2 public help polish.
+- Lichess seam: Top-bar EvenChess Help popup copy model.
+- Lichess files touched: `modules/evenchess/src/main/PublicShell.scala`.
+- EvenChess files touched: `modules/evenchess/src/test/PublicShellTest.scala`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Players need a concise launch-safe explanation of what each assistance level gives them before or during play. Repeated allowance features, including Proposed Move, must be explained at first unlock and then referenced as extra uses at later levels.
+- Public UX effect: The top-bar help popup now includes an L1-L10 level guide covering rules, safety, offset count, threats, pins, Ask AI accrual, opponent/my potentials, Proposed Move allowances, WikiBook, eval, expert notes, and full co-pilot coverage.
+- Preserved Lichess capability: Native top-bar dropdown behavior, public navigation, account routes, and normal Lichess feature links remain unchanged.
+- Patch map entry: `PM-2026-183`.
+- Tests / checks: `PublicShellTest.scala` covers L1-L10 copy and the first-unlock Proposed Move explanation rule.
+- Upstream update notes: Preserve the `PublicCopy.helpGuideSections` source if top-bar rendering changes.
+- Rollback notes: Reverting removes the level-by-level explanation from the help popup.
+
+### INT-2026-189 - Live level indicator row layout and coach Used Level badge
+
+- Phase: V2 live round UI polish.
+- Lichess seam: Native EvenChess round overlay levels card and coach-card header.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The live levels card must display the local player's Set/Used row above the opponent's Set/Used row with equal-width indicators on both desktop and mobile. The coach card must label the active badge as Used Level so players do not confuse payload/card level with the game's retained Used Level.
+- Public UX effect: The levels card shows `Set Level` and `Used Level` in the first row, `Opponent Set` and `Opponent Used` in the second row when available, and all pills share equal columns. The coach badge now reads `Used Level: X`.
+- Preserved Lichess capability: Native round layout, move input, coach actions, TTS controls, Draw mode, and level-toggle behavior remain unchanged.
+- Patch map entry: `PM-2026-184`.
+- Tests / checks: `evenchessOverlay.test.ts` covers the two-row level summary order and coach-card Used Level badge.
+- Upstream update notes: Preserve `evenchess-live__level-summary` row/column behavior and the Used Level wording if the live overlay header changes.
+- Rollback notes: Reverting can reintroduce mobile wrapping where opponent values sit beside or above player values, and can restore ambiguous `Level X` coach badge wording.
+
+### INT-2026-190 - Coach TTS excludes Potential Moves text
+
+- Phase: V2 live coach TTS polish.
+- Lichess seam: Native EvenChess round overlay coach-card TTS source.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Potential Moves are displayed as visual/choice options in the coach card, but they should not be spoken by manual or automatic TTS. The round overlay must therefore build the speech source from base coach text plus Ask AI/Proposed Move text only.
+- Public UX effect: Visible Potential Moves remain available in the coach card, while Speak and Auto Speak skip those option lines.
+- Preserved Lichess capability: Native round layout, board input, Potential ECS reveal buttons, Proposed Move advice, Ask AI replacement text, and TTS authorization checks remain unchanged.
+- Patch map entry: `PM-2026-185`.
+- Tests / checks: `evenchessOverlay.test.ts` verifies visible potential text is excluded from the TTS source.
+- Upstream update notes: Preserve the visual-only Potential Moves rule if coach-card result rendering or TTS source construction changes.
+- Rollback notes: Reverting can make TTS read Potential Moves option lists again.
+
+### INT-2026-190 - Test Ground shared ECE local AI model control
+
+- Phase: Test Ground ECE deployment controls.
+- Lichess seam: Local-only Test Ground launcher panel and PowerShell lifecycle script that start the private ECE provider stack.
+- Lichess files touched: `scripts/evenchess-testground-panel.js`; `scripts/evenchess-testground.ps1`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Test Ground must not own a second local model setting. It now mirrors ECE's shared local Ollama model aliases, discovers installed Ollama models when available, and keeps OpenAI keys ECE-only/write-only.
+- Public UX effect: No production/browser route calls ECE directly or receives secrets. Test Ground operators can change ECE launch sizing and local model values, while Match/Performance `Use Local` inherits the same Position/local model.
+- Preserved Lichess capability: Local panel launch controls, ECE server-to-server boundary, debug status, and Start/Stop Real ECE workflow remain unchanged.
+- Tests / checks: Syntax and focused ECE admin settings tests cover the private settings side; Test Ground panel/PowerShell parse checks cover the launcher side.
+- Rollback notes: Reverting can reintroduce stale split-brain model settings between Test Ground launch JSON and ECE settings.
+
+### INT-2026-191 - Live display-state hydration for threat toggles
+
+- Phase: V2 live overlay display-state persistence.
+- Lichess seam: Same-origin EvenChess live overlay refresh JSON and native round overlay display-state renderer.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Threat arrows are gated by the in-game feature toggles. Live refreshes and local computer/no-policy rounds must not silently reset the current display state to L0/all-off, because that makes one client hide threat arrows while another client with a different saved state can show them.
+- Public UX effect: A browser reload or live ECE refresh keeps the player's selected Used Level and per-feature toggles, including separate student/opponent threat arrows, when those choices are allowed by the game's Set Level.
+- Preserved Lichess capability: Normal round move input, ECE server-to-server privacy, Set Level caps, monotonic Used Level rules, and server policy authority remain unchanged. The local fallback is same-browser only and does not grant server assistance rights.
+- Patch map entry: `PM-2026-186`.
+- Tests / checks: `evenchessOverlay.test.ts` covers server display-state hydration and same-browser local display fallback.
+- Upstream update notes: Preserve current-player display serialization in live overlay refreshes and the Set-Level-capped fallback if round JSON or display controls are refactored.
+- Rollback notes: Reverting can make desktop/mobile clients disagree on threat-arrow visibility after refresh because one side may reinitialize toggles to defaults.
+
+### INT-2026-192 - EvenChess live clock layout preservation
+
+- Phase: V2 live round layout polish.
+- Lichess seam: Native round grid layout for board, table, players, clocks, and EvenChess coach/level panels.
+- Lichess files touched: `ui/round/css/_app-layout.scss`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess adds coach and level panels into the native round grid. The grid must still reserve non-overlapping rows for Lichess clocks so the opponent clock text is not hidden behind the native table, and mobile player/timer rows must not be pushed below coaching.
+- Public UX effect: Desktop timed games keep native opponent clock text visible instead of showing only the bar. Mobile games place the native timer/player stack before the EvenChess coach card.
+- Preserved Lichess capability: Native clocks, clock bars, player rows, table/move controls, board, and EvenChess coach card remain in the standard round shell.
+- Patch map entry: `PM-2026-187`.
+- Tests / checks: Round SCSS was rebuilt with `ui/build --debug --no-install round`; browser geometry inspection confirmed the desktop table no longer starts on the same row as the top clock.
+- Upstream update notes: Preserve the EvenChess-specific table row offset and mobile coach ordering if upstream round grid areas change.
+- Rollback notes: Reverting can hide opponent clock digits behind the table on desktop and move the active mobile timer below the coaching card.
+
+### INT-2026-193 - Draw-mode arrows feed Proposed Move validation
+
+- Phase: V2 live proposed-move input polish.
+- Lichess seam: Native round EvenChess coach-card Proposed Move action and Draw-mode board input.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Draw mode intentionally disables piece movement while touch/pointer input creates green board arrows. Proposed Move selection still needs to consume that same single green arrow, but legal-move validation cannot rely only on Chessground's cleared movable map.
+- Public UX effect: A mobile or desktop user can enable Draw, draw one legal green arrow, and press `Assess my proposed move`; the same proposed-move bridge is used as before, with the arrow checked against server-provided current `possibleMoves`.
+- Preserved Lichess capability: Native piece movement remains disabled only while Draw mode is active, normal right-click/drawable arrows still work, invalid/multiple arrows are still rejected, and ECE remains server-to-server through ECL.
+- Patch map entry: `PM-2026-188`.
+- Tests / checks: `evenchessOverlay.test.ts` covers Draw-mode arrows with empty Chessground movable destinations.
+- Upstream update notes: Preserve the `possibleMoves` fallback if round movement/drawable state is refactored.
+- Rollback notes: Reverting can make Draw-mode proposed-move arrows appear on the board but fail Proposed Move as illegal.
+
+### INT-2026-194 - Proposed Move after-move ECS markers
+
+- Phase: V2 live proposed-move display.
+- Lichess seam: Same-origin EvenChess Proposed Move action controller and ECE response normalization.
+- Lichess files touched: `app/controllers/EvenChess.scala`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Legal Proposed ECS responses now provide hypothetical after-move board data through `proposed_move_evaluation.after_move_initial_ecs`, with optional `after_move_advanced_ecs` addenda, not only the older `after_move_standard_ecs` alias. ECL must normalize those shapes before it caches the proposed preview for the round UI.
+- Public UX effect: Pressing `Assess my proposed move` can display the post-move overlay markers and coach cards for the hypothetical position, then toggle back to the cached current-FEN payload without consuming another call.
+- Preserved Lichess capability: ECE remains server-to-server, browser code still receives only approved display payloads, and invalid/illegal proposed moves do not replace the current overlay state.
+- Patch map entry: `PM-2026-189`.
+- Tests / checks: Existing UI coverage verifies that normalized proposed cards with post-move visuals render on the board; controller compile checks cover the expanded parser.
+- Upstream update notes: Preserve `after_move_initial_ecs`/`after_move_advanced_ecs` parsing if Proposed ECS response aliases are refactored.
+- Rollback notes: Reverting can make proposed-move text appear while board markers disappear because ECL falls back to incomplete legacy side-output parsing.
+
+### INT-2026-195 - Combined coach card, level controls, and WikiBook placement
+
+- Phase: V2 live round UI layout polish.
+- Lichess seam: Native round overlay renderer plus round grid placement for coach, eval, board, clocks, controls, and WikiBook.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_app-layout.scss`; `ui/round/css/_layout.scss`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The separate levels card consumed a full side column and split related controls away from the coach text. The round layout must now present one combined coach card with Set/Used Level, quick level selection, and collapsible scrollable feature toggles, while keeping WikiBook visible as its own top-right panel.
+- Public UX effect: Desktop players see the combined coach card left of the board and WikiBook at the top right. Mobile players see the board and native player/timer rows first, then the coach card, then WikiBook. The coach card exposes quick `Apply up to` level selection and a `Level toggles` disclosure for detailed feature toggles.
+- Preserved Lichess capability: Native board input, clocks, player rows, move list/table controls, EvenChess eval bar, TTS controls, Draw mode, Ask AI, Potential Moves, Proposed Move, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-190`.
+- Tests / checks: `evenchessOverlay.test.ts` verifies desktop/mobile grid area mapping, coach-card-contained level controls, no separate level card, and WikiBook render order. Full `ui/build --debug --no-install --no-color` regenerated `public/compiled/manifest.json`; direct HTTP checks confirmed both `http://127.0.0.1:8080/` and `http://192.168.5.3:8080/` now load `manifest.cf8931ef.js`, whose served contents point round to `round.WPJGB7CP.js` and `round.36f00acf.css`.
+- Upstream update notes: Preserve `coach ece-eval board wiki` desktop mapping, the mobile `user-bot` before `coach` order, and the coach-card `details.evenchess-live__level-toggles` behavior if upstream round layout or overlay rendering changes.
+- Rollback notes: Reverting restores the separate level card, moves the coach card back to the right side on desktop, and can put level controls away from the coach text again.
+
+### INT-2026-196 - Test Ground asset readiness follows combined coach controls
+
+- Phase: V2 local Test Ground launch readiness.
+- Lichess seam: Local-only Test Ground PowerShell launcher and browser control panel status API.
+- Lichess files touched: None.
+- EvenChess files touched: `scripts/evenchess-testground.ps1`; `scripts/evenchess-testground-panel.js`; `docs/requirements/planv1.6_phase_s_ci_cd_build_release_automation.md`; `docs/evenchess/EVENCHESS_NEW_CHAT_HANDOVER_CURRENT.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The live round UI intentionally removed the standalone `EvenChess Levels` card when level controls moved inside the coach card. The local Test Ground readiness check was still using that removed text as the required asset marker, so correctly rebuilt assets were reported as stale and `launch-evenchess` exited before starting ECL.
+- Public UX effect: None in production. Local Test Ground launch and panel status now accept manifest-selected round assets that contain `evenchess-live__coach-levels` and `evenchess-live__level-toggles`, while still reporting whether a legacy level card marker is present for diagnostics.
+- Preserved Lichess capability: Native local stack startup, explicit Build UI Assets flow, Docker/WSL controls, and ECE server-to-server boundaries remain unchanged.
+- Patch map entry: None; this is local Test Ground tooling, not an upstream/core Lichess seam.
+- Tests / checks: PowerShell parser check, Node syntax check, Test Ground `status` action, and scoped `git diff --check`.
+- Upstream update notes: If round level controls move again, keep the readiness marker tied to stable current UI class names instead of removed display text.
+- Rollback notes: Reverting can make Test Ground reject current combined coach-card assets and ask for a UI build even when the manifest-selected assets are current.
+
+### INT-2026-197 - Right-side native table centers beside the board
+
+- Phase: V2 live round desktop layout polish.
+- Lichess seam: Native round grid placement for the right-side game table, board, and EvenChess WikiBook panel.
+- Lichess files touched: `ui/round/css/_app-layout.scss`; `ui/round/css/_layout.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess moved WikiBook into the top-right column but left the native table locked to lower grid rows. With the WikiBook collapsed or empty, the move/status table could appear far below the board rather than centered like standard Lichess. The table now spans the board-height row group and uses `align-self: center`; only a non-empty, open WikiBook starts the table below the opening panel so the two right-side panels do not overlap.
+- Public UX effect: Desktop players see the native right-side move/status table vertically centered beside the board when WikiBook is collapsed or empty, matching the standard Lichess visual balance more closely. Opening a populated WikiBook can still push the table lower.
+- Preserved Lichess capability: Native move list, player rows, controls, board, clocks, WikiBook toggle, and EvenChess coach/eval placement remain unchanged.
+- Patch map entry: `PM-2026-191`.
+- Tests / checks: `evenchessOverlay.test.ts` covers the centered table grid rule and non-empty open-WikiBook fallback. Full `ui/build --debug --no-install --no-color` regenerated `public/compiled/manifest.json`; direct HTTP checks confirmed both `http://127.0.0.1:8080/` and `http://192.168.5.3:8080/` now load `manifest.3bed384b.js`, whose served contents point round to `round.I7LQQFYQ.js` and `round.e31bb517.css`.
+- Upstream update notes: Preserve the `grid-row: 1 / 15` centered table rule and the `:has(.evenchess-live__opening-wiki:not(.empty, .toggle-box--toggle-off))` fallback if the round grid is refactored.
+- Rollback notes: Reverting can place the native game table too low whenever the EvenChess WikiBook panel is collapsed.
+
+### INT-2026-198 - Compact coach action button labels
+
+- Phase: V2 live coach-card copy and sizing polish.
+- Lichess seam: Native round EvenChess coach-card renderer and coach-card action button styling.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The live coach card action buttons were too visually large and the potential-move labels repeated the command word. The shared action button width, height, padding, radius, and font size are now smaller and consistent, and the potential-move buttons read `Opponents potential moves` and `My potential moves`.
+- Public UX effect: Coach-card action buttons are more compact, equal-sized, and easier to scan.
+- Preserved Lichess capability: Ask AI, Potential Moves, Proposed Move, TTS, Draw mode, quotas, turn gating, and ECE server-to-server request paths remain unchanged.
+- Patch map entry: `PM-2026-192`.
+- Tests / checks: `evenchessOverlay.test.ts` covers the new labels and compact shared button sizing. Full `ui/build --debug --no-install --no-color` regenerated `public/compiled/manifest.json`; direct HTTP checks confirmed both `http://127.0.0.1:8080/` and `http://192.168.5.3:8080/` now load `manifest.3bed384b.js`, whose served contents point round to `round.I7LQQFYQ.js` and `round.e31bb517.css`.
+- Upstream update notes: Keep all coach-card action buttons on the shared `evenchess-live__proposed-button` sizing token unless a future design system replaces it.
+- Rollback notes: Reverting restores the longer `Show ...` labels and larger action buttons.
+
+### INT-2026-199 - Compact homepage summary card sizing
+
+- Phase: V2 lobby homepage polish.
+- Lichess seam: Native lobby homepage stylesheet for the EvenChess summary callout.
+- Lichess files touched: `ui/lobby/css/_lobby.scss`.
+- EvenChess files touched: `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The lobby homepage owns the placement and styling of the `What is EvenChess?` card beside the active-games/lobby area. The card was too large for that supporting-summary role, so the EvenChess-specific summary and fact-card styling now uses a capped width, reduced padding, thinner top border, smaller inherited font size, tighter fact boxes, and shorter line spacing.
+- Public UX effect: The `What is EvenChess?` card is now a compact left-side summary panel instead of a large landing-card-sized block.
+- Preserved Lichess capability: Homepage copy, quick pairing/lobby tabs, active-games display, lobby start buttons, navigation, and public route behavior remain unchanged.
+- Patch map entry: `PM-2026-193`.
+- Tests / checks: Full `ui/build --debug --no-install --no-color` regenerated `public/compiled/manifest.json`; browser verification on `http://localhost:8080/` confirmed the live page serves `lobby.fcb064e9.css`, with the card about 231px wide in the checked viewport and about 10px body text.
+- Upstream update notes: Preserve the compact EvenChess summary sizing if upstream lobby layout or homepage CSS is refactored.
+- Rollback notes: Reverting restores the larger card sizing and can make the summary dominate the lobby homepage again.
+
+### INT-2026-200 - Ask AI loaded-position hydration and Position ECS context retention
+
+- Phase: V2 Position ECS / Ask AI reliability.
+- Lichess seam: Native EvenChess controller same-origin ECE bridge and native round Ask AI action.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `ui/round/src/evenchessTestGround.ts`; `ui/round/src/interfaces.ts`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `ui/round/tests/evenchessTestGround.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Ask AI must use ECL's same-origin Position ECS bridge and needs a current accepted Standard ECS live payload for the active game/FEN/ply. Loaded in-progress games could expose the Ask AI button before the initial current-position overlay was accepted, so the UI stopped at `Awaiting payload`. ECL now hydrates the current Standard ECS overlay and retries the Ask AI call once, preserves Position ECS context when assistance state is normalized, and accepts Position ECS ids from top-level Standard ECS, nested `standard.position_ecs`, nested `standard_ecs.position_ecs`, or matching `request_echo.position_ecs_id` fields.
+- Public UX effect: Pressing `Ask AI` on a loaded in-progress game can fetch the current ECE payload first instead of requiring the user to make another move before Position ECS works.
+- Preserved Lichess capability: Browser code still calls only ECL, ECE remains server-to-server, Ask AI remains own-turn gated, level gated, current-FEN gated, and failed/non-displayable Position ECS responses still do not consume an accepted-use token.
+- Patch map entry: `PM-2026-194`.
+- Tests / checks: `node ui/test round/tests/evenchessOverlay.test.ts`; `node ui/test round/tests/evenchessTestGround.test.ts`; `ui/build --debug --no-install --no-color`; Docker-backed `./lila.sh compile`; direct ECE `/health` and `/v1/ece/standard` shape check; same-origin `POST /evenchess/testground/ece/position-ecs` smoke returned `ok: true` with an approved `Ask AI` card.
+- Upstream update notes: Preserve Standard ECS Position ECS context extraction and the loaded-position hydration retry if the round boot, socket reload, or ECE adapter path is refactored.
+- Rollback notes: Reverting can make Ask AI show `Awaiting payload` on loaded in-progress games until the next move refreshes Standard ECS.
+
+### INT-2026-201 - Mobile coach card non-overlap with native controls
+
+- Phase: V2 live round mobile layout polish.
+- Lichess seam: Native mobile round grid placement for player/timer rows, replay/action controls, horizontal move strip, and the EvenChess coach card.
+- Lichess files touched: `ui/round/css/_app-layout.scss`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess inserts a large combined coach card into the native mobile round surface. The prior mobile order let native action controls, horizontal moves, and game metadata visually cross the coach card on phones because the coach card began before those native strips had their own rows.
+- Public UX effect: Mobile players now see board/player/timer rows, native controls, and the move strip before the EvenChess coach card starts. The coach header, level selector, action buttons, and status text wrap inside the card instead of crowding or overlaying each other.
+- Preserved Lichess capability: Native board input, replay/actions, horizontal move list, player rows, clocks, game metadata, EvenChess coach controls, WikiBook, and ECE server-to-server privacy remain unchanged.
+- Patch map entry: `PM-2026-195`.
+- Tests / checks: `node ui/test round/tests/evenchessOverlay.test.ts`; `pnpm exec stylelint ui/round/css/_app-layout.scss ui/round/css/_evenchess-live.scss`; `git diff --check -- ui/round/css/_app-layout.scss ui/round/css/_evenchess-live.scss ui/round/tests/evenchessOverlay.test.ts`; full `ui/build --debug --no-install --no-color`, which regenerated `manifest.11a4c48e.js`, `round.2UJCI3BR.js`, and `round.3c3c2b22.css`.
+- Upstream update notes: Keep `.round__app.evenchess-live-layout` mobile ordering as `user-bot -> pocket-bot -> controls -> moves -> coach`, and preserve the mobile wrapping rules for `.evenchess-live__head`, `.evenchess-live__apply`, and `.evenchess-live__proposed-action`.
+- Rollback notes: Reverting can make mobile action controls, move text, and game metadata hover over the EvenChess coach card again.
+
+### INT-2026-202 - Desktop native right rail stays aligned beside the board
+
+- Phase: V2 live round desktop layout polish.
+- Lichess seam: Native desktop round grid placement for WikiBook, captured-material strips, player rows, move table, controls, clocks, and EvenChess coach/eval side rails.
+- Lichess files touched: `ui/round/css/_app-layout.scss`; `ui/round/css/_layout.scss`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess moved WikiBook to the top-right desktop column while the native material/player/move table continued to use round-grid rows. The previous layout could leave captured pieces and the move table far below the board, especially when WikiBook occupied or reserved too much vertical space. The desktop EvenChess grid now caps WikiBook height, removes the old open-WikiBook push-down rule, zeroes empty right-side rows, and centers the native table across the board-height row group.
+- Public UX effect: Desktop players see the captured-material strip and move/status table beside the board like standard Lichess. With WikiBook open, the top opening panel stays above the right rail without forcing the native table down the page.
+- Preserved Lichess capability: Native move table, controls, player rows, clocks, captured-material display, board, WikiBook toggle, EvenChess coach card, eval rail, overlays, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-196`.
+- Tests / checks: `node ui/test round/tests/evenchessOverlay.test.ts`; `pnpm exec stylelint ui/round/css/_app-layout.scss ui/round/css/_layout.scss ui/round/css/_evenchess-live.scss`; `git diff --check -- ui/round/css/_app-layout.scss ui/round/css/_layout.scss ui/round/css/_evenchess-live.scss ui/round/tests/evenchessOverlay.test.ts`; full `ui/build --debug --no-install --no-color`; browser verification at `2048x1065` on `http://localhost:8080/wBNOlfFn`, serving `manifest.6485012e.js` and `round.c6a2f3a0.css`. Final measured board height was 500px; WikiBook occupied the top 106.39px; material top began at board+106.39px; the user/move/control group center was board center+56.07px instead of being pushed down below the board.
+- Upstream update notes: Preserve the EvenChess desktop right-column order `wiki -> mat-top -> clock-top -> user-top -> moves -> controls -> user-bot -> clock-bot -> mat-bot`, the zero-height spacer rows, and the centered `.round__app__table` span if upstream round grid or WikiBook layout changes.
+- Rollback notes: Reverting can make the right-side captured-material strip and move table sit too low when WikiBook is open or reserving vertical space.
+
+### INT-2026-203 - Compact coach-card controls and enlarged text pane
+
+- Phase: V2 live round coach-card sizing polish.
+- Lichess seam: Native round EvenChess coach-card styling inside the board-side layout.
+- Lichess files touched: `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The coach card shares the native round layout with the board, WikiBook, move table, and player controls. The level/header/action controls were using too much vertical space, making the summary and AI text pane too short. The coach-card internals now use scoped compact typography, smaller pills/buttons/selects, tighter gaps, and a larger `.evenchess-live__coach-text` flex area.
+- Public UX effect: Desktop coach-card content is about 25% smaller, and the text area is more than twice as tall in the verified viewport, making long summaries/potential-move text easier to read before scrolling.
+- Preserved Lichess capability: Native board input, move table, player rows, clocks, WikiBook, EvenChess level selection, toggles, TTS, draw mode, Ask AI, potential moves, proposed move assessment, and ECE privacy boundaries remain unchanged.
+- Patch map entry: `PM-2026-197`.
+- Tests / checks: `pnpm exec stylelint ui/round/css/_evenchess-live.scss`; `git diff --check -- ui/round/css/_evenchess-live.scss ui/round/tests/evenchessOverlay.test.ts`; direct CSS smoke assertions for compact coach-card sizing; full `ui/build --debug --no-install --no-color`; browser verification at `2048x1065` on `http://localhost:8080/wBNOlfFn`, serving `manifest.8402ee45.js` and `round.7fac552b.css`. The focused `node ui/test round/tests/evenchessOverlay.test.ts` harness timed out before reporting results in this run, so the change-specific assertions were also executed directly.
+- Upstream update notes: Preserve the compact scoped sizing under `.evenchess-live__card--coach` and the enlarged `.evenchess-live__coach-text` basis/min-height if coach-card layout is refactored.
+- Rollback notes: Reverting restores the larger controls and reduces the visible coach text pane height.
+
+### INT-2026-204 - Merged Potential Moves action with opponent-move refund guard
+
+- Phase: V2 live round Potential ECS action polish.
+- Lichess seam: Native round EvenChess coach-card renderer, round move lifecycle clear hook, and same-origin EvenChess Potential ECS controller bridge.
+- Lichess files touched: `app/controllers/EvenChess.scala`; `conf/routes`; `ui/round/src/ctrl.ts`; `ui/round/src/evenchessTestGround.ts`; `ui/round/src/interfaces.ts`; `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `ui/round/tests/evenchessTestGround.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Potential ECS remains server-to-server through ECL, but the live coach UI needs one simpler player-facing action. The merged `Potential Moves` button chooses player-side reveal on the student's turn and opponent-side reveal on the opponent's turn, while a same-origin refund route lets ECL undo an opponent-potential cache/usage entry when the opponent moves during the configured grace window.
+- Public UX effect: The coach card now shows one `Potential Moves` button with status like `White 2/3 - Black 1/1`, always listing the student's colour first. After the opponent moves, the button is briefly disabled for one second so a late tap/click cannot immediately become a student-turn request. If an opponent-potential reveal was requested just before the opponent moved, ECL attempts to restore that opponent reveal use within three seconds.
+- Preserved Lichess capability: Native board input, move lifecycle, Ask AI, Proposed Move, TTS, Draw mode, level gates, turn checks, same-origin ECL action routes, Potential ECS server-to-server privacy, cached reveal replay, and admin-unlimited quota display remain unchanged.
+- Patch map entry: `PM-2026-198`.
+- Tests / checks: `node ui/test round/tests/evenchessTestGround.test.ts`; `ui/build --debug --no-install --no-color`; Docker-backed `./lila.sh compile`; `pnpm exec stylelint ui/round/css/_evenchess-live.scss`; scoped `git diff --check`; browser DOM verification on local ECL serving `manifest.0823620d.js` and `round.7fac552b.css`, showing one `Potential Moves` action with combined colour quota text. The full `node ui/test round/tests/evenchessOverlay.test.ts` harness timed out before reporting in this run, so the new assertions are present but not fully harness-verified yet.
+- Upstream update notes: Preserve the merged action's turn-derived `kind`, student-colour-first quota text, post-opponent-move cooldown, and refund route if the round action area or Potential ECS bridge is refactored.
+- Rollback notes: Reverting restores separate opponent/my potential buttons and removes the refund guard, allowing opponent-reveal uses to remain consumed when the opponent moves immediately after the request.
+
+### INT-2026-205 - Coach card top action strip and shared action status
+
+- Phase: V2 live round coach-card layout polish.
+- Lichess seam: Native round EvenChess coach-card renderer and coach-card SCSS.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The coach card's primary actions should sit near the level and speech controls instead of occupying a separate bottom block. Action feedback such as `Awaiting payload` should not create multiple separate status rows.
+- Public UX effect: The coach card top now reads as level badges, then `Speak`, `Auto`, `Draw`, `Ask AI`, then `Potential Moves` with colour quotas and `Proposed move check` with quota text. The visible `Audit ece-...` sentence is removed, while non-visible audit metadata remains available in attributes.
+- Preserved Lichess capability: Native board input, TTS, Draw mode, Ask AI, Potential ECS, Proposed Move, same-origin ECL action routes, quota enforcement, action caching, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-199`.
+- Tests / checks: `evenchessOverlay.test.ts` was updated for the new control order, proposed label, absence of a visible audit element, and compact top action sizing.
+- Upstream update notes: Preserve the top action order, adjacent Potential/Proposed quota text, shared action status area, and absence of visible raw audit ids if the coach card renderer is refactored.
+- Rollback notes: Reverting restores the bottom action block, visible raw audit-id text, old proposed action label, and separated per-button status placement.
+
+### INT-2026-206 - Coach card bottom aligns with the board
+
+- Phase: V2 live round coach-card layout polish.
+- Lichess seam: Native round EvenChess coach-card SCSS, desktop grid layout, and board-height measurement variables.
+- Lichess files touched: `ui/round/src/view/main.ts`; `ui/round/css/_app-layout.scss`; `ui/round/css/_layout.scss`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The coach card sits below the game-info card on the left, while the native move table can make the lower desktop grid rows continue past the board. The EvenChess desktop grid now stops the coach/board/eval areas before those move-table tail rows, the round view publishes `--evenchess-coach-height` from the coach row's actual top to the board bottom when it redraws, and the coach text pane scrolls internally for longer content.
+- Public UX effect: On desktop, the coach card bottom lines up with the board bottom instead of dropping below it, while long Summary/Ask AI/Potential/Proposed text remains available through the card's scrollable text area.
+- Preserved Lichess capability: Native board layout, game-info card, coach controls, level toggles, TTS, Draw mode, Ask AI, Potential Moves, Proposed move check, and mobile auto-height behavior remain unchanged.
+- Patch map entry: `PM-2026-200`.
+- Tests / checks: `evenchessOverlay.test.ts` was updated to assert the measured coach-height source, grid-height fallback, and shrinkable scroll text pane.
+- Upstream update notes: Preserve the EvenChess desktop grid-area stop row, `--evenchess-coach-height` for the desktop coach-card height override, and `overflow-y: auto` on `.evenchess-live__coach-text` if round layout measurement is refactored.
+- Rollback notes: Reverting can make the coach card extend below the board again when the game-info card sits above it.
+
+### INT-2026-207 - Homepage summary column centering and mobile full width
+
+- Phase: V2 lobby homepage polish.
+- Lichess seam: Native lobby homepage stylesheet for the EvenChess summary callout.
+- Lichess files touched: `ui/lobby/css/_lobby.scss`.
+- EvenChess files touched: `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The compact `What is EvenChess?` card sits in the native lobby grid's supporting left column. It was the right size but left-aligned inside that column on wide screens, and its mobile/default width stayed capped instead of filling the portrait lobby row.
+- Public UX effect: On wide screens, the summary card remains compact but is horizontally centered in the left lobby column and sits slightly below the top edge of the primary lobby row. On mobile portrait, it stays at the top and spans the full available content width.
+- Preserved Lichess capability: Homepage copy, quick pairing/lobby tabs, active-games display, lobby start buttons, navigation, and public route behavior remain unchanged.
+- Patch map entry: `PM-2026-201`.
+- Tests / checks: Browser verification on `http://localhost:8080/` checked desktop column centering after the lobby CSS build. Generated lobby CSS inspection confirmed the mobile/default card uses full available width before the wider-screen compact centering rule applies.
+- Upstream update notes: Preserve the mobile/default full-width summary card and desktop column-centered compact sizing if upstream lobby grid or homepage CSS is refactored.
+- Rollback notes: Reverting can leave the summary card left-aligned in the wide lobby column and capped/narrow on mobile portrait.
+
+### INT-2026-208 - Coach card dropdown/action row refinement
+
+- Phase: V2 live round coach-card layout polish.
+- Lichess seam: Native round EvenChess coach-card renderer and coach-card SCSS.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The coach card's controls are rendered inside the native round overlay. The requested layout keeps `Speak`, `Auto`, and `Draw` as the equal-sized tool row, moves `Ask AI` into the equal-width assistance row with `Potential Moves` and `Proposed move check`, places each action's allowance text under its button, and keeps one shared status line below the row.
+- Public UX effect: Players see a cleaner coach card: Set/Used levels read as indicators, the three assistance actions share one row, the level selector and Level toggles disclosure share a row, and the open Level toggles panel covers the coach text pane instead of pushing Summary text out of the card.
+- Preserved Lichess capability: Native board input, clocks, move table, WikiBook, TTS, Draw mode, Ask AI, Potential Moves, Proposed move check, level gates, same-origin ECL action routes, and server-to-server ECE privacy remain unchanged.
+- Patch map entry: `PM-2026-202`.
+- Tests / checks: `evenchessOverlay.test.ts` verifies row order, `Apply up to: ...` select labels, absence of the `Features` hint, three-column assistance sizing, absolute Level toggles overlay behavior, and compact button sizing.
+- Upstream update notes: Preserve the tool/action row split, non-button Set/Used indicators, equal level-control row, overlay-style Level toggles disclosure, and scrollable coach text pane if the round overlay or coach-card SCSS is refactored.
+- Rollback notes: Reverting can put `Ask AI` back in the tool row, restore stacked level controls, and make the open Level toggles panel push Summary/text below the card.
+
+### INT-2026-209 - Merged Potential Moves current-turn click guard
+
+- Phase: V2 live round Potential Moves merged-button polish.
+- Lichess seam: Native round EvenChess coach-card action renderer and same-origin Potential ECS bridge trigger.
+- Lichess files touched: `ui/round/src/view/evenchessOverlay.ts`.
+- EvenChess files touched: `ui/round/tests/evenchessOverlay.test.ts`; `docs/requirements/EVENCHESS_LICHESS_V2_REQUIREMENTS_APPENDICES_COMBINED.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: The merged `Potential Moves` button replaced separate player/opponent buttons, so the visible click handler must choose the reveal side from the current turn at click time. A stale rendered kind can otherwise generate old side-specific availability messages even though the merged UX should simply request the side to move.
+- Public UX effect: Pressing `Potential Moves` on the student's turn requests student potentials; pressing it on the opponent's turn requests opponent potentials. Old shared-status messages like `Potential Moves: Available on opponent's turn` and `Potential Moves: Available on your turn` are no longer surfaced by the merged button path.
+- Preserved Lichess capability: Explicit low-level side-mismatched requests remain rejected before ECE transport; server-to-server ECE privacy, level gates, quotas, caching, cooldown, and refund behavior remain unchanged.
+- Patch map entry: `PM-2026-203`.
+- Tests / checks: `evenchessOverlay.test.ts` adds a stale-render click regression for the merged button and keeps the explicit side-mismatch guard test.
+- Upstream update notes: Preserve current-turn derivation in the visible merged-button click path if the coach-card action renderer is refactored.
+- Rollback notes: Reverting can reintroduce old per-side availability messages when the turn changes between render and click.
+
+### INT-2026-210 - Native chat ordered below the EvenChess coach card
+
+- Phase: V2 live round coach-card layout polish.
+- Lichess seam: Native round parent grid, native clocks/material rows, and EvenChess live-layout desktop override.
+- Lichess files touched: `ui/round/css/_layout.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessLayout.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Online game chat renders as `.mchat` inside `round__side`, separate from the EvenChess coach card, while some empty/non-chat cases still expose `round__underchat`. The EvenChess desktop parent-grid override must split the side children, keep the game-info card in the single top side row, start coach below it with a small gap while preserving board-bottom alignment, explicitly place the real chat in the `uchat` area below the coach/moves row, and keep the native right-column clocks/material rows visually close to the move-card stack.
+- Public UX effect: On wide desktop live rounds, the left column order is game info, EvenChess Coach, then chat when chat is available, with a gap above coach and before under-board content. The right column keeps compact clock text and content-sized material rows closer to the native lichess presentation.
+- Preserved Lichess capability: Native chat, notes, game info, board, move table, WikiBook, coach card, board-bottom coach alignment, and mobile round order remain unchanged.
+- Patch map entry: `PM-2026-204`.
+- Tests / checks: `node ui/test round/tests/evenchessLayout.test.ts`; `pnpm exec stylelint ui/round/css/_layout.scss`; full `ui/build --debug --no-install --no-color` to refresh `public/compiled/manifest.json`; scoped `git diff --check`; browser DOM verification on `http://localhost:8080/5H4cNrwwCswo` after reload confirmed the page loaded `round.5df8aae0.css` through `manifest.069678d0.js`, with game info ending at `194px`, the coach card running from `284px` to the board bottom at `565px`, and the visible `.mchat` panel running below it from `580px` to `744px`.
+- Upstream update notes: Preserve the `game__meta -> coach -> .mchat/uchat -> under` order, coach top gap with board-bottom alignment, compact clock override, and content-sized material rows in `.round:has(> .round__app.evenchess-live-layout)` if upstream round grid rows or chat placement are refactored.
+- Rollback notes: Reverting can let the native chat appear above the EvenChess coach card again on wide desktop layouts.
+
+### INT-2026-211 - EvenChess search games preserve native first-move no-start expiration
+
+- Phase: V2 public search and native game lifecycle hardening.
+- Lichess seam: Native challenge accept and challenge game-creation source assignment.
+- Lichess files touched: `modules/challenge/src/main/ChallengeApi.scala`; `modules/challenge/src/main/ChallengeJoiner.scala`.
+- EvenChess files touched: `app/controllers/EvenChess.scala`; `modules/challenge/src/test/JoinerTest.scala`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess search-created human/human and roster-backed bot matches use the native challenge accept path, but that path normally creates `Source.Friend` games. Native Lichess first-move no-start expiration only applies to public matchmaking-style sources. EvenChess search now passes a `Source.Lobby` override at challenge acceptance, while direct friend challenges keep the default `Source.Friend` behavior.
+- Public UX effect: Matched EvenChess search games again use Lichess's native first-move expiration path: before both sides have moved, the round JSON can expose the normal expiration countdown and the round scheduler can abort/no-start the game according to native Lichess rules.
+- Preserved Lichess capability: Direct friend challenges remain non-expirable by first-move no-start rules, normal challenge acceptance behavior remains the default, clocks and game lifecycle are still Lichess-owned, and EvenChess does not add a custom timer.
+- Patch map entry: `PM-2026-205`.
+- Tests / checks: `./lila.sh 'challenge/testOnly lila.challenge.JoinerTest'`; `./lila.sh compile`.
+- Upstream update notes: Preserve the default friend source and the EvenChess search-only `Source.Lobby` override if challenge joining or EvenChess game handoff is refactored.
+- Rollback notes: Reverting can make EvenChess search-created games look like friend challenges to native Lichess, disabling first-move no-start expiration until the round clock starts after both sides move.
+
+### INT-2026-212 - Native first-move countdown banner visible in EvenChess desktop layout
+
+- Phase: V2 public search and native game lifecycle hardening.
+- Lichess seam: Native round parent grid areas for first-move expiration.
+- Lichess files touched: `ui/round/css/_layout.scss`.
+- EvenChess files touched: `ui/round/tests/evenchessLayout.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: EvenChess search games now opt into native Lichess no-start expiration, but the wide desktop EvenChess grid had `0`-height tracks for `expi-top` and `expi-bot`. That hid the natural Lichess first-move countdown banner even though the server abort path worked.
+- Public UX effect: On wide desktop live rounds, the native green first-move countdown can appear in its normal move-table stack location when a first move is pending. With no expiration banner, those rows collapse naturally.
+- Preserved Lichess capability: Lichess still owns the first-move timer, countdown vnode, no-start abort, clocks, and game lifecycle. EvenChess only keeps the native expiration grid areas visible.
+- Patch map entry: `PM-2026-206`.
+- Tests / checks: `node ui/test round/tests/evenchessLayout.test.ts`; `pnpm exec stylelint ui/round/css/_layout.scss`; `ui/build --debug --no-install --no-color`; browser reload of `http://localhost:8080/5H4cNrwwCswo` confirmed served `round.3a9d90eb.css` and computed wide-grid rows with non-zero native top-expiration track.
+- Upstream update notes: Preserve auto-sized `expi-top` and `expi-bot` tracks in the EvenChess wide desktop grid if coach/chat/move-table layout is refactored.
+- Rollback notes: Reverting can hide the native first-move countdown banner on desktop while server-side no-start expiration still aborts the game.
+
+### INT-2026-213 - EvenChess quick-pairing tile shows the native search spinner
+
+- Phase: V2 public search UX parity.
+- Lichess seam: Native lobby quick-pairing pool tile renderer.
+- Lichess files touched: `ui/lobby/src/view/pools.ts`.
+- EvenChess files touched: `ui/lobby/tests/evenchessPools.test.ts`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Native Lichess quick pairing shows a spinner in the active tile while searching. EvenChess search reuses the active pool tile state, but one path carried rating-range data and therefore rendered the native range sweep instead of the spinner.
+- Public UX effect: When an EvenChess quick-pairing search is waiting, the selected quick-pairing tile shows the normal Lichess spinner animation. Ordinary native pool searches still keep their native range display when applicable.
+- Preserved Lichess capability: Native quick-pairing tile layout, custom tile, native spinner vnode, pool range display for non-EvenChess searches, and EvenChess server-side search/polling are unchanged.
+- Patch map entry: `PM-2026-207`.
+- Tests / checks: `node ui/test lobby/tests/evenchessPools.test.ts`.
+- Upstream update notes: Preserve the `evenChessPoolMember` distinction in the pool renderer if native lobby pooling is refactored.
+- Rollback notes: Reverting can make EvenChess waiting searches show rating-range text instead of the normal Lichess spinner in the active quick-pairing tile.
+
+### INT-2026-214 - Production post-game ECEMF Coach Review in native analysis
+
+- Phase: V2 analysis memory and post-game review mode foundation.
+- Lichess seam: Native route table, EvenChess controller, native analysis controller overlay options, native analysis side-panel renderer, replay side-stack layout, and round replay EvenChess overlay column.
+- Lichess files touched: `conf/routes`; `app/controllers/EvenChess.scala`; `ui/analyse/src/ctrl.ts`; `ui/analyse/src/view/main.ts`; `ui/analyse/src/view/evenchessReview.ts`; `ui/analyse/css/_layout.scss`; `ui/analyse/css/_side.scss`; `ui/analyse/css/_evenchess-ai.scss`; `ui/round/src/evenchessReview.ts`; `ui/round/src/view/evenchessOverlay.ts`; `ui/round/css/_evenchess-live.scss`.
+- EvenChess files touched: `ui/analyse/tests/evenchessReview.test.ts`; `ui/round/tests/evenchessReview.test.ts`; `docs/requirements/planv1.6_phase_m_analysis_memory_review_modes.md`; `docs/evenchess/EVENCHESS_LICHESS_PATCH_MAP.md`; `docs/integration/EVENCHESS_LICHESS_INTEGRATION_LOG.md`.
+- Why this seam exists: Users must open completed games in the normal Lichess analysis/replay surface, step through moves with the native move selector, and see the saved ECEMF frame for the selected ply and side-to-move. ECL therefore needs production review routes, durable sanitized storage, and a native analysis card while ECE stays server-to-server only.
+- Public UX effect: Completed game analysis/replay pages can show an EvenChess Coach Review card with `Generate ECEMF`, `Match Summary`, and `Ask AI` actions. Stored ECEMF coach text is labeled as player/opponent text by side-to-move, non-live Ask AI is saved back into the review store, and board overlays can render stored ECEMF arrows/highlights during replay. The card remains visible on real game replay pages whose `aside.analyse__side` is replaced by server-side HTML.
+- Preserved Lichess capability: Native analysis board, move selector, move table, study/analysis separation, ordinary completed games without ECEMF, live EvenChess coaching, ECR/result/clocks/matchmaking, and ECE server-to-server privacy remain unchanged.
+- Patch map entry: `PM-2026-208`.
+- Tests / checks: `./lila.sh playRoutes`; `./lila.sh compile`; `pnpm --filter analyse exec tsc --noEmit --pretty false`; `pnpm --filter round exec tsc --noEmit --pretty false`; `pnpm exec stylelint ui/analyse/css/_layout.scss ui/analyse/css/_side.scss ui/analyse/css/_evenchess-ai.scss ui/round/css/_evenchess-live.scss`; `pnpm test:ui-tsx ui/round/tests/evenchessReview.test.ts ui/analyse/tests/evenchessReview.test.ts`; `./ui/build -dn --no-color`; browser verified on `http://localhost:8080/5H4cNrww/black` after restarting `lila`: ECEMF generated 6 frames, Match Summary returned, Ask AI returned and persisted after reload.
+- Upstream update notes: Preserve the review route names, the `EVENCHESS_REVIEW_STORE_DIR` persistence override, the analysis side-stack mount point, real-game-id/side-to-move overlay requests, and configured/default/docker-host ECE base URL fallback if analysis, route, or ECE gateway infrastructure is refactored.
+- Rollback notes: Reverting removes the production post-game ECEMF review card and routes, leaving only the older test-ground full-match review scaffolding.

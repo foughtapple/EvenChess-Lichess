@@ -21,6 +21,7 @@ import { wikiToggleBox } from '@/wiki';
 import { viewContext, renderBoard, renderMain, renderUnderboard } from './components';
 import { renderControls } from './controls';
 import { renderEvenChessLearning } from './evenchessLearning';
+import { renderEvenChessReview } from './evenchessReview';
 import { render as trainingView } from './roundTraining';
 import { renderTools } from './tools';
 
@@ -55,36 +56,39 @@ function analyseView(ctrl: AnalyseCtrl, deps?: typeof studyDeps): VNode {
     renderUnderboard(ctx),
     ctrl.keyboardMove && renderKeyboardMove(ctrl.keyboardMove),
     trainingView(ctrl),
-    hl(
-      'aside.analyse__side',
-      {
-        hook: onInsert(elm => {
-          if (ctrl.opts.$side && ctrl.opts.$side.length) {
-            $(elm).replaceWith(ctrl.opts.$side);
-            wikiToggleBox();
-          }
-        }),
-      },
-      [
-        renderEvenChessLearning(ctrl, 'analysis'),
-        ctrl.forecast && forecastView(ctrl, ctrl.forecast),
-        !ctrl.synthetic &&
-          playable(ctrl.data) &&
-          hl(
-            'div.back-to-game',
+    hl('div.analyse__side-stack', [
+      renderEvenChessReview(ctrl),
+      hl(
+        'aside.analyse__side',
+        {
+          hook: onInsert(elm => {
+            if (ctrl.opts.$side && ctrl.opts.$side.length) {
+              $(elm).replaceWith(ctrl.opts.$side);
+              wikiToggleBox();
+            }
+          }),
+        },
+        [
+          renderEvenChessLearning(ctrl, 'analysis'),
+          ctrl.forecast && forecastView(ctrl, ctrl.forecast),
+          !ctrl.synthetic &&
+            playable(ctrl.data) &&
             hl(
-              'a.button.button-empty.text',
-              {
-                attrs: {
-                  href: router.game(ctrl.data, ctrl.data.player.color),
-                  'data-icon': licon.Back,
+              'div.back-to-game',
+              hl(
+                'a.button.button-empty.text',
+                {
+                  attrs: {
+                    href: router.game(ctrl.data, ctrl.data.player.color),
+                    'data-icon': licon.Back,
+                  },
                 },
-              },
-              i18n.site.backToGame,
+                i18n.site.backToGame,
+              ),
             ),
-          ),
-      ],
-    ),
+        ],
+      ),
+    ]),
     ctrl.chatCtrl && renderChat(ctrl.chatCtrl, { insert: v => fixChatHeight(v.elm) }),
     hl('div.chat__members.none', { hook: onInsert(watchers) }),
   );

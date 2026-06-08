@@ -1,6 +1,6 @@
 .evenchess-board-overlay {
   position: absolute;
-  z-index: 4;
+  z-index: $z-cg__board_overlay-100;
   inset: 0;
   overflow: visible;
   border-radius: inherit;
@@ -59,8 +59,8 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'coach'
-    'ece-eval'
-    'levels';
+    'wiki'
+    'ece-eval';
   gap: 10px;
   min-width: 0;
   max-width: 100%;
@@ -78,21 +78,12 @@
     pointer-events: auto;
   }
 
-  &__level-column {
-    grid-area: levels;
+  &__wiki-column {
+    grid-area: wiki;
     display: flex;
     flex-direction: column;
     gap: 10px;
     min-height: 0;
-    align-self: stretch;
-  }
-
-  &__card--levels {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    flex-direction: column;
     align-self: stretch;
   }
 
@@ -117,7 +108,7 @@
       overflow: visible;
     }
 
-    &:not(.empty):not(.toggle-box--toggle-off) .analyse__wiki-text {
+    &:not(.empty, .toggle-box--toggle-off) .analyse__wiki-text {
       min-height: min(28vh, 260px);
       max-height: min(44vh, 420px);
       overflow-y: auto;
@@ -171,10 +162,196 @@
 
   &__card--coach {
     grid-area: coach;
-    height: 280px;
+    box-sizing: border-box;
+    height: var(--evenchess-coach-height, 100%);
+    max-height: var(--evenchess-coach-height, 100%);
     display: flex;
-    min-height: 280px;
+    min-height: 0;
     flex-direction: column;
+    padding: 9px;
+    font-size: 0.75rem;
+    line-height: 1.18;
+
+    .evenchess-live__coach-eval {
+      min-height: 21px;
+      gap: 6px;
+      margin-bottom: 6px;
+      border-radius: 6px;
+      font-size: 0.59rem;
+    }
+
+    .evenchess-live__head {
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .evenchess-live__label {
+      font-size: 0.88rem;
+      line-height: 1.15;
+    }
+
+    .evenchess-live__audit {
+      max-width: 9rem;
+      font-size: 0.54rem;
+    }
+
+    .evenchess-live__level-summary {
+      max-width: 195px;
+      flex-basis: 165px;
+      gap: 4px;
+    }
+
+    .evenchess-live__level-summary-row,
+    .evenchess-live__level-grid {
+      gap: 4px;
+    }
+
+    .evenchess-live__level-grid--summary {
+      margin-bottom: 6px;
+    }
+
+    .evenchess-live__level,
+    .evenchess-live__used {
+      min-height: 18px;
+      padding: 0 6px;
+      border-color: #203c62;
+      border-radius: 5px;
+      background: rgba(10, 26, 46, 0.46);
+      color: #d7e5f8;
+      font-size: 0.54rem;
+      box-shadow: none;
+    }
+
+    .evenchess-live__head-actions {
+      gap: 4px;
+    }
+
+    .evenchess-live__tts,
+    .evenchess-live__tts-auto,
+    .evenchess-live__draw-toggle {
+      width: 58px;
+      min-height: 21px;
+      flex-basis: 58px;
+      gap: 3px;
+      padding: 0 6px;
+      border-radius: 6px;
+      font-size: 0.54rem;
+    }
+
+    .evenchess-live__tts-auto input {
+      width: 11px;
+      height: 11px;
+    }
+
+    .evenchess-live__coach-levels {
+      gap: 5px;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+    }
+
+    .evenchess-live__apply {
+      min-height: 25px;
+      margin-bottom: 0;
+      font-size: 0.59rem;
+
+      select {
+        width: 100%;
+        min-height: 22px;
+        border-radius: 6px;
+      }
+    }
+
+    .evenchess-live__level-control-row {
+      gap: 5px;
+    }
+
+    .evenchess-live__level-toggles {
+      border-radius: 6px;
+    }
+
+    .evenchess-live__level-toggles-summary {
+      min-height: 26px;
+      justify-content: center;
+      padding: 0 7px;
+      font-size: 0.59rem;
+    }
+
+    .evenchess-live__level-list--inside {
+      max-height: clamp(96px, calc(var(--evenchess-coach-height, var(--evenchess-levels-height, 360px)) - 166px), 280px);
+    }
+
+    .evenchess-live__coach-text {
+      min-height: clamp(96px, calc(var(--evenchess-coach-height, var(--evenchess-levels-height, 360px)) - 230px), 280px);
+      flex: 1 1 auto;
+      padding-right: 1px;
+    }
+
+    .evenchess-live__title {
+      margin-bottom: 4px;
+      font-size: 0.72rem;
+      line-height: 1.2;
+    }
+
+    .evenchess-live__body {
+      font-size: 0.68rem;
+      line-height: 1.25;
+    }
+
+    .evenchess-live__coach-actions {
+      --evenchess-coach-action-width: 122px;
+
+      gap: 5px;
+      margin: 0 0 6px;
+      padding: 0 0 6px;
+      border-top: 0;
+      border-bottom: 1px solid #173a65;
+    }
+
+    .evenchess-live__coach-action-group {
+      gap: 4px;
+    }
+
+    .evenchess-live__coach-actions-row {
+      gap: 4px;
+    }
+
+    .evenchess-live__coach-actions-row--tools {
+      justify-content: flex-end;
+    }
+
+    .evenchess-live__coach-actions-row--assistance {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: start;
+    }
+
+    .evenchess-live__proposed-action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+    }
+
+    .evenchess-live__proposed-button {
+      width: 100%;
+      min-height: 22px;
+      flex-basis: auto;
+      gap: 4px;
+      padding: 0 6px;
+      border-radius: 5px;
+      font-size: 0.59rem;
+    }
+
+    .evenchess-live__proposed-status {
+      min-height: 24px;
+      font-size: 0.57rem;
+      line-height: 1.15;
+      text-align: center;
+      white-space: normal;
+    }
+
+    .evenchess-live__action-status {
+      min-height: 16px;
+      font-size: 0.57rem;
+    }
   }
 
   &__card--shell {
@@ -263,7 +440,7 @@
     justify-content: center;
     margin-bottom: 10px;
     border-radius: 8px;
-    color: #ffffff;
+    color: #fff;
     font-size: 0.78rem;
     font-weight: 850;
     line-height: 1;
@@ -278,6 +455,7 @@
   &__coach-column {
     grid-area: coach;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -298,33 +476,93 @@
     gap: 10px;
   }
 
-  &__proposed-action {
-    display: flex;
+  &__coach-text {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+  }
+
+  &__coach-levels {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #173a65;
+  }
+
+  &__coach-actions {
+    --evenchess-coach-action-width: 132px;
+
+    display: grid;
+    flex: 0 0 auto;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #173a65;
+  }
+
+  &__coach-actions-row {
+    display: grid;
     min-width: 0;
     gap: 8px;
     align-items: center;
   }
 
+  &__coach-actions-row--tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  &__coach-actions-row--assistance {
+    grid-template-columns: minmax(112px, 1.05fr) minmax(74px, 0.8fr) minmax(126px, 1.15fr) minmax(74px, 0.8fr);
+  }
+
+  &__coach-action-group {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+
+    .evenchess-live__head {
+      margin-bottom: 0;
+    }
+  }
+
+  &__proposed-action {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
   &__proposed-button {
-    min-height: 34px;
+    min-height: 26px;
+    box-sizing: border-box;
     display: inline-flex;
-    flex: 0 0 auto;
-    gap: 7px;
+    width: min(100%, var(--evenchess-coach-action-width));
+    flex: 0 0 min(100%, var(--evenchess-coach-action-width));
+    gap: 5px;
     align-items: center;
     justify-content: center;
-    padding: 0 12px;
+    padding: 0 8px;
     border: 1px solid #2dd4bf;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #08203a;
     color: #f8fbff;
-    font-weight: 700;
-    line-height: 1;
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.15;
+    text-align: center;
     cursor: pointer;
 
     &.is-active {
       background: #0f766e;
       border-color: #5eead4;
-      color: #ffffff;
+      color: #fff;
     }
 
     &:disabled {
@@ -343,6 +581,131 @@
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__card--post-review {
+    gap: 8px;
+  }
+
+  &__review-head,
+  &__review-actions,
+  &__review-amounts {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  &__review-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  &__review-meta,
+  &__review-amounts,
+  &__review-status,
+  &__review-label {
+    color: #a9c6ee;
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  &__review-meta {
+    white-space: nowrap;
+  }
+
+  &__review-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  &__review-button {
+    min-height: 28px;
+    box-sizing: border-box;
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border: 1px solid #2dd4bf;
+    border-radius: 6px;
+    background: #08203a;
+    color: #f8fbff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: center;
+    cursor: pointer;
+
+    &:disabled {
+      border-color: #315d8e;
+      color: #8fa6c4;
+      cursor: default;
+      opacity: 0.72;
+    }
+  }
+
+  &__review-amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  &__review-status,
+  &__review-error {
+    margin: 0;
+  }
+
+  &__review-error {
+    color: #fecaca;
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  &__review-body {
+    min-height: 96px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-top: 8px;
+    border-top: 1px solid #173a65;
+    color: #eaf2ff;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    scrollbar-width: thin;
+
+    h3,
+    p {
+      margin: 0 0 8px;
+    }
+
+    h3 {
+      color: #f8fbff;
+      font-size: 0.82rem;
+      line-height: 1.2;
+    }
+  }
+
+  &__review-summary {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #173a65;
+
+    strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #2dd4bf;
+      font-size: 0.72rem;
+    }
+  }
+
+  &__action-amount {
+    justify-self: start;
+  }
+
+  &__action-status {
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    color: #b9d6ff;
+    font-size: 0.72rem;
+    line-height: 1.2;
   }
 
   &__spinner {
@@ -387,14 +750,14 @@
   }
 
   &__level {
-    border: 1px solid #2dd4bf;
-    background: #08203a;
+    border: 1px solid rgba(45, 212, 191, 0.48);
+    background: rgba(8, 32, 58, 0.6);
     color: #eaf2ff;
   }
 
   &__used {
-    border: 1px solid #315d8e;
-    background: #0d2038;
+    border: 1px solid rgba(49, 93, 142, 0.66);
+    background: rgba(13, 32, 56, 0.62);
     color: #c9dcf5;
   }
 
@@ -438,15 +801,14 @@
 
   &__apply {
     min-height: 34px;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     color: #d7e5f8;
     font-size: 0.78rem;
 
     select {
+      width: 100%;
       min-width: 0;
       min-height: 30px;
       border: 1px solid #315d8e;
@@ -454,6 +816,58 @@
       background: #0b1b30;
       color: #eaf2ff;
       font: inherit;
+
+      option:disabled,
+      option.is-disabled {
+        background: #071626;
+        color: #6f8198;
+      }
+    }
+  }
+
+  &__coach-levels &__apply {
+    margin-bottom: 0;
+  }
+
+  &__level-control-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  &__level-toggles {
+    min-width: 0;
+    border: 1px solid #203c62;
+    border-radius: 8px;
+    background: #08182a;
+    overflow: visible;
+
+    &[open] {
+      z-index: 12;
+      background: #0a1a2e;
+    }
+  }
+
+  &__level-toggles-summary {
+    min-height: 34px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px;
+    color: #eaf2ff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+
+    &::marker {
+      color: #2dd4bf;
+    }
+
+    &::-webkit-details-marker {
+      color: #2dd4bf;
     }
   }
 
@@ -463,6 +877,22 @@
     overflow-y: auto;
     padding-right: 2px;
     scrollbar-width: thin;
+  }
+
+  &__level-list--inside {
+    position: absolute;
+    z-index: 12;
+    top: calc(100% + 6px);
+    right: 0;
+    left: 0;
+    max-height: min(42vh, 320px);
+    flex: 0 1 auto;
+    padding: 0 8px 8px;
+    border: 1px solid #203c62;
+    border-radius: 8px;
+    background: #08182a;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+    scrollbar-gutter: stable;
   }
 
   &__level-row {
@@ -549,11 +979,39 @@
   &__head-actions {
     display: flex;
     min-width: 0;
+    flex-wrap: wrap;
     gap: 6px;
     align-items: center;
+    justify-content: flex-end;
   }
 
-  &__tts {
+  &__level-summary {
+    display: grid;
+    min-width: 0;
+    max-width: 260px;
+    flex: 1 1 220px;
+    gap: 6px;
+  }
+
+  &__level-summary-row {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  &__level-summary &__level,
+  &__level-summary &__used {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__tts,
+  &__tts-auto,
+  &__draw-toggle {
     min-height: 28px;
     display: inline-flex;
     flex: 0 0 auto;
@@ -584,7 +1042,36 @@
     }
   }
 
-  &__tts-label {
+  &__draw-toggle.is-active {
+    border-color: #7dd3fc;
+    background: #0f766e;
+    color: #fff;
+  }
+
+  &__tts-auto {
+    input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: #2dd4bf;
+
+      &:disabled {
+        cursor: not-allowed;
+      }
+    }
+
+    &:has(input:disabled) {
+      border-color: #294661;
+      background: #071626;
+      color: #7891ad;
+      cursor: not-allowed;
+      opacity: 0.72;
+    }
+  }
+
+  &__tts-label,
+  &__tts-auto-label,
+  &__draw-label {
     line-height: 1;
   }
 
@@ -598,17 +1085,43 @@
 
   &__body {
     min-height: 0;
-    flex: 1 1 auto;
     margin: 0;
-    overflow-y: auto;
+    overflow: visible;
     color: #d7e5f8;
     font-size: 0.9rem;
     line-height: 1.35;
-    scrollbar-width: thin;
+  }
+
+  &__coach-result {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #173a65;
+  }
+
+  &__coach-result-label {
+    display: block;
+    margin-bottom: 4px;
+    color: #7dd3fc;
+    font-size: 0.76rem;
+    line-height: 1.2;
+  }
+
+  &__coach-result-title {
+    margin: 0 0 4px;
+    color: #fff;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  &__coach-result-body {
+    margin: 0;
+    color: #d7e5f8;
+    font-size: 0.82rem;
+    line-height: 1.3;
   }
 
   &__coach-potentials {
-    flex: 0 0 auto;
     margin-top: 10px;
     padding-top: 8px;
     border-top: 1px solid #173a65;
@@ -666,11 +1179,68 @@
 
     &__card {
       min-height: 0;
+      padding: 10px;
     }
 
     &__card--coach {
       height: auto;
-      min-height: 220px;
+      min-height: 0;
+    }
+
+    &__head {
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: flex-start;
+    }
+
+    &__head-actions {
+      flex: 1 1 100%;
+      justify-content: flex-end;
+    }
+
+    &__level-summary {
+      max-width: none;
+      flex: 1 1 100%;
+    }
+
+    &__coach-levels {
+      gap: 6px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+    }
+
+    &__coach-text {
+      overflow: visible;
+      padding-right: 0;
+    }
+
+    &__coach-actions {
+      gap: 7px;
+    }
+
+    &__coach-actions-row--tools {
+      justify-content: flex-start;
+    }
+
+    &__coach-actions-row--assistance {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    &__proposed-action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+    }
+
+    &__proposed-button {
+      width: 100%;
+      flex-basis: auto;
+    }
+
+    &__proposed-status {
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
     }
 
     &__eval {
@@ -686,26 +1256,25 @@
       transform: translateY(50%);
     }
 
-    &__level-list {
-      max-height: 250px;
+    &__level-list--inside {
+      max-height: min(42vh, 320px);
     }
   }
 
   @include mq-at-least-col2 {
     display: contents;
 
-    &__level-column {
-      height: var(--evenchess-levels-height, min(78vh, 680px));
-      max-height: var(--evenchess-levels-height, min(78vh, 680px));
+    &__wiki-column {
+      height: auto;
+      max-height: min(34vh, 220px);
       min-height: 0;
       overflow: hidden;
       align-self: start;
     }
 
-    &__card--levels {
-      flex: 1 1 auto;
-      overflow: hidden;
-      align-self: start;
+    &__opening-wiki.analyse__wiki:not(.empty, .toggle-box--toggle-off) .analyse__wiki-text {
+      min-height: 0;
+      max-height: min(22vh, 160px);
     }
 
     &__eval {
@@ -715,14 +1284,16 @@
     }
 
     &__coach-column {
-      align-self: start;
+      height: 100%;
+      min-height: 0;
+      align-self: stretch;
     }
   }
 
   @include mq-at-least-col3 {
-    &__level-column {
-      height: var(--evenchess-levels-height, 100%);
-      max-height: var(--evenchess-levels-height, none);
+    &__wiki-column {
+      height: auto;
+      max-height: min(34vh, 220px);
     }
 
     &__eval {
@@ -736,4 +1307,9 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.cg-wrap.evenchess-draw-mode,
+.cg-wrap.evenchess-draw-mode cg-board {
+  touch-action: none;
 }

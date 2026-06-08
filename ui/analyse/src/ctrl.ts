@@ -215,8 +215,8 @@ export default class AnalyseCtrl implements CevalHandler {
       surface: this.study ? 'study' : 'analysis',
       getFen: () => this.node?.fen,
       getPly: () => this.node?.ply,
-      getGameId: () => (this.synthetic ? `analysis-${location.pathname}` : `analysis-${this.data.game.id}`),
-      getSide: () => this.bottomColor(),
+      getGameId: () => (this.synthetic ? `analysis-${location.pathname}` : this.data.game.id),
+      getSide: () => this.turnColor(),
       getOrientation: () => this.bottomColor(),
       getBoardElement: () => this.element.querySelector<HTMLElement>('.analyse__board.main-board'),
     });

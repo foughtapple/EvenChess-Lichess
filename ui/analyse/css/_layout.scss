@@ -22,6 +22,20 @@ body {
     justify-content: start;
   }
 
+  &__side-stack {
+    grid-area: side;
+    align-self: start;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: $analyse-block-gap;
+
+    > .analyse__side {
+      grid-area: auto;
+      margin: 0;
+    }
+  }
+
   &__board {
     grid-area: board;
 
@@ -102,8 +116,13 @@ body {
       'uchat      .     side';
     row-gap: 0;
 
-    &__side {
+    &__side,
+    &__side-stack {
       margin: $analyse-block-gap 0 0 0;
+    }
+
+    &__side-stack > .analyse__side {
+      margin: 0;
     }
 
     .chat__members {
@@ -142,7 +161,8 @@ body {
       'uchat   . under   .     controls'
       'uchat   . under   .     round-training';
 
-    &__side {
+    &__side,
+    &__side-stack {
       margin-top: 0;
     }
 

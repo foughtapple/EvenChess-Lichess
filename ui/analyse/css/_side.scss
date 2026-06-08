@@ -1,7 +1,10 @@
 .analyse {
-  &__side {
+  &__side,
+  &__side-stack {
     align-self: start;
+  }
 
+  &__side {
     .back-to-game {
       text-align: center;
       margin-top: 2em;
