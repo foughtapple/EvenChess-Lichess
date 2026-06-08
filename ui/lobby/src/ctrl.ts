@@ -16,6 +16,7 @@ import type {
   Hook,
   Pool,
   PoolMember,
+  EvenChessSearchStatus,
   GameType,
   ForceSetupOptions,
   LobbyMe,
@@ -40,6 +41,8 @@ export default class LobbyController {
   stepping = false;
   redirecting = false;
   poolMember?: PoolMember;
+  evenChessPoolMember?: PoolMember;
+  evenChessSearchStatus?: EvenChessSearchStatus;
   pools: Pool[];
   filter: Filter;
   setupCtrl: SetupController;
@@ -257,12 +260,17 @@ export default class LobbyController {
     if (!this.me) {
       xhr.anonPoolSeek(this.pools.find(p => p.id === id)!);
       this.setTab('real_time');
+    } else if (this.evenChessPoolMember?.id === id) {
+      this.setupCtrl.stopEvenChessSearchPolling();
+      this.evenChessPoolMember = undefined;
+      this.evenChessSearchStatus = undefined;
     } else if (this.poolMember && this.poolMember.id === id) this.leavePool();
-    else this.enterPool({ id });
+    else void this.setupCtrl.startEvenChessQuickPoolSearch(id);
     this.redraw();
   };
 
   enterPool = (member: PoolMember) => {
+    this.evenChessPoolMember = undefined;
     poolRangeStorage.set(this.me?.username, member.id, member.range);
     this.setTab('pools');
     this.poolMember = member;

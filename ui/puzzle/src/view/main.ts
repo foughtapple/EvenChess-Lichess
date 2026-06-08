@@ -101,6 +101,10 @@ export default function (ctrl: PuzzleCtrl): VNode {
       hl('aside.puzzle__side', [
         replay(ctrl),
         puzzleBox(ctrl),
+        hl('section.evenchess-puzzle-levels', {
+          attrs: { 'data-evenchess-puzzle-levels': 'true' },
+          hook: onInsert(el => ctrl.setEvenChessLevelsElement(el as HTMLElement)),
+        }),
         ctrl.streak ? streakBox(ctrl) : userBox(ctrl),
         theme(ctrl),
         config(ctrl),
@@ -137,6 +141,10 @@ export default function (ctrl: PuzzleCtrl): VNode {
         ),
         renderAnalyse(ctrl),
         feedbackView(ctrl),
+        hl('section.evenchess-puzzle-coach', {
+          attrs: { 'data-evenchess-puzzle-coach': 'true' },
+          hook: onInsert(el => ctrl.setEvenChessPanelElement(el as HTMLElement)),
+        }),
       ]),
       controls(ctrl),
       ctrl.keyboardMove && renderKeyboardMove(ctrl.keyboardMove),

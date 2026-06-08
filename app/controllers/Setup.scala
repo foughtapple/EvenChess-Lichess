@@ -60,6 +60,23 @@ final class Setup(
                       case _ if HTTPRequest.isLichobile(ctx.req) => Challenger.Open.some
                       case _ => none
                     .so: challenger =>
+                      def formValue(name: String): Option[String] =
+                        get(name).map(_.trim).filter(_.nonEmpty)
+                      val evenChessFriendContract =
+                        for
+                          orig <- origUser
+                          dest <- destUser
+                          request = lila.evenchess.LevelBasedMatchmaking.FriendLevelContract.Request.fromFormValues(
+                            mode = formValue("evenChessFriendLevelMode"),
+                            myLevel = formValue("evenChessFriendMyLevel"),
+                            opponentLevel = formValue("evenChessFriendOpponentLevel")
+                          )
+                          result <- lila.evenchess.LevelBasedMatchmaking.FriendLevelContract.assign(
+                            challengerRating = orig.perf.intRating.value,
+                            opponentRating = dest.perf.intRating.value,
+                            request = request
+                          )
+                        yield result
                       val timeControl = makeTimeControl(config.makeClock, config.makeDaysPerTurn)
                       val challenge = lila.challenge.Challenge.make(
                         variant = config.variant,
@@ -69,7 +86,10 @@ final class Setup(
                         color = config.color.name,
                         challenger = challenger,
                         destUser = destUser,
-                        rematchOf = none
+                        rematchOf = none,
+                        evenChessInfo = evenChessFriendContract.map(_.requestCardSummary),
+                        evenChessChallengerLevel = evenChessFriendContract.map(_.challengerLevel.value),
+                        evenChessRecipientLevel = evenChessFriendContract.map(_.opponentLevel.value)
                       )
                       env.challenge.api
                         .create(challenge)

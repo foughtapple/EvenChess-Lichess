@@ -28,21 +28,22 @@ export const hooks = (ctrl: LobbyController): Hooks =>
     el.addEventListener('keydown', handler);
   });
 
-export function render({ pools, poolMember, opts }: LobbyController) {
+export function render({ pools, poolMember, evenChessPoolMember, opts }: LobbyController) {
+  const activeMember = poolMember || evenChessPoolMember;
   return pools
     .map(pool => {
-      const active = poolMember?.id === pool.id;
+      const active = activeMember?.id === pool.id;
       return h(
         'div.lpool',
         {
-          class: { active, transp: !!poolMember && !active },
+          class: { active, transp: !!activeMember && !active },
           attrs: { role: 'button', 'data-id': pool.id, tabindex: '0' },
         },
         [
           h('div.clock', `${pool.lim}+${pool.inc}`),
           active
-            ? poolMember.range && opts.showRatings
-              ? h('div.range', poolMember.range.replace('-', '–'))
+            ? activeMember.range && opts.showRatings
+              ? h('div.range', activeMember.range.replace('-', '–'))
               : spinnerVdom()
             : h('div.perf', pool.perf),
         ],
@@ -52,7 +53,7 @@ export function render({ pools, poolMember, opts }: LobbyController) {
       h(
         'div.lpool',
         {
-          class: { transp: !!poolMember },
+          class: { transp: !!activeMember },
           attrs: { role: 'button', 'data-id': 'custom', tabindex: '0' },
         },
         i18n.site.custom,

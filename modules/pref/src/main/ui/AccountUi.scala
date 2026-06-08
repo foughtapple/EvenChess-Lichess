@@ -1,5 +1,6 @@
 package lila.pref
 package ui
+import lila.evenchess.AccountMonetisationUi
 import lila.ui.*
 
 import ScalatagsTemplate.{ *, given }
@@ -22,6 +23,7 @@ final class AccountUi(helpers: Helpers):
     case PrefCateg.ChessClock => trans.preferences.chessClock.txt()
     case PrefCateg.GameBehavior => trans.preferences.gameBehavior.txt()
     case PrefCateg.Privacy => trans.preferences.privacy.txt()
+    case PrefCateg.EvenChess => "EvenChess"
 
   def setting(name: Frag, body: Frag) = st.section(h2(name), body)
 
@@ -81,6 +83,9 @@ final class AccountUi(helpers: Helpers):
             trans.site.editProfile()
           ),
           div(cls := "sep"),
+          a(activeCls("evenchess-account"), href := AccountMonetisationUi.Routes.account)(
+            "Tokens & plans"
+          ),
           PrefCateg.values.map: categ =>
             a(activeCls(categ.slug), href := routes.Pref.form(categ.slug))(
               categName(categ)

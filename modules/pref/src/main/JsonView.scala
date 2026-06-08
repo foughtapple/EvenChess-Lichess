@@ -2,6 +2,30 @@ package lila.pref
 
 import play.api.libs.json.*
 
+private def evenChessJson(p: Pref) =
+  val config = lila.evenchess.UserSettings.fromTags(p.tags).clientConfig
+  Json.obj(
+    "defaultSetLevel" -> config.defaultSetLevel,
+    "preferredUsedLevel" -> config.preferredUsedLevel,
+    "defaultFeatureToggles" -> config.defaultFeatureToggles,
+    "overlayDensity" -> config.overlayDensity,
+    "coachingCardVerbosity" -> config.coachingCardVerbosity,
+    "boardHighlightIntensity" -> config.boardHighlightIntensity,
+    "offsetCountDisplay" -> config.offsetCountDisplay,
+    "aiSummaryPreference" -> config.aiSummaryPreference,
+    "ttsEnabled" -> config.ttsEnabled,
+    "ttsAutoSpeak" -> config.ttsAutoSpeak,
+    "ttsAutoDelaySeconds" -> config.ttsAutoDelaySeconds,
+    "ttsVoice" -> config.ttsVoice,
+    "ttsRatePercent" -> config.ttsRatePercent,
+    "ttsVolumePercent" -> config.ttsVolumePercent,
+    "ttsQueueBehavior" -> config.ttsQueueBehavior,
+    "ttsMuteDuringOpponentTurn" -> config.ttsMuteDuringOpponentTurn,
+    "studyAiOverlay" -> config.studyAiOverlay,
+    "openingAiOverlay" -> config.openingAiOverlay,
+    "telemetryPreference" -> config.telemetryPreference
+  )
+
 def toJson(p: Pref, lichobileCompat: Boolean) = Json.obj(
   "dark" -> (p.bg != Pref.Bg.LIGHT),
   "transp" -> (p.bg == Pref.Bg.TRANSPARENT),
@@ -43,5 +67,6 @@ def toJson(p: Pref, lichobileCompat: Boolean) = Json.obj(
   "moveEvent" -> p.moveEvent,
   "rookCastle" -> p.rookCastle,
   "flairs" -> p.flairs,
-  "sayGG" -> p.sayGG
+  "sayGG" -> p.sayGG,
+  "evenchess" -> evenChessJson(p)
 )

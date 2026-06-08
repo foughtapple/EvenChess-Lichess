@@ -3,6 +3,8 @@ package ui
 
 import play.api.data.Form
 
+import lila.evenchess.AccountMonetisationUi
+import lila.evenchess.UserSettings
 import lila.ui.*
 
 import ScalatagsTemplate.{ *, given }
@@ -25,6 +27,13 @@ final class AccountPref(helpers: Helpers, helper: PrefHelper, bits: AccountUi):
       categ.slug
     ):
       val booleanChoices = translatedBooleanIntChoices
+      val evenChessBooleanChoices = List(true -> "On", false -> "Off")
+      val setLevelChoices =
+        (UserSettings.minSetLevel to UserSettings.maxSetLevel).map(level => level -> s"L$level")
+      val ttsRateChoices = List(80 -> "Slower", 100 -> "Normal", 120 -> "Faster")
+      val ttsVolumeChoices = List(50 -> "Quiet", 80 -> "Normal", 100 -> "Full")
+      val ttsAutoDelayChoices =
+        List(0 -> "Immediately", 1 -> "1 second", 2 -> "2 seconds", 3 -> "3 seconds", 5 -> "5 seconds")
       div(cls := "box box-pad")(
         h1(cls := "box__top")(bits.categName(categ)),
         postForm(cls := "autosubmit", action := routes.Pref.formApply)(
@@ -218,6 +227,132 @@ final class AccountPref(helpers: Helpers, helper: PrefHelper, bits: AccountUi):
               trans.site.shareYourInsightsData(),
               radios(form("insightShare"), translatedInsightShareChoices),
               "shareYourInsightsData"
+            )
+          ),
+          categFieldset(PrefCateg.EvenChess, categ)(
+            div(cls := "help text", dataIcon := Icon.InfoCircle)(
+              "These preferences control EvenChess display defaults only. Live coaching remains capped and audited by the server. ",
+              a(href := AccountMonetisationUi.Routes.account)(
+                "Tokens and plans are managed from your EvenChess account."
+              )
+            ),
+            setting(
+              "Default Set Level",
+              radios(form("evenchess.defaultSetLevel"), setLevelChoices),
+              "evenchessDefaultSetLevel"
+            ),
+            setting(
+              "Preferred starting Used Level",
+              radios(form("evenchess.preferredUsedLevel"), setLevelChoices),
+              "evenchessPreferredUsedLevel"
+            ),
+            setting(
+              "Preferred starting feature toggles",
+              frag(
+                div(cls := "help text")(
+                  "These defaults are applied when a new game starts and when the in-game Apply up to dropdown changes level. ",
+                  "Features above the selected level still stay off."
+                ),
+                div(cls := "evenchess-pref__feature-toggles")(
+                  UserSettings.DefaultFeatureToggle.all.groupBy(_.level).toList.sortBy(_._1).map:
+                    (level, features) =>
+                      div(cls := "evenchess-pref__feature-level")(
+                        h3(s"L$level"),
+                        features.map: feature =>
+                          div(cls := "evenchess-pref__feature-toggle")(
+                            div(cls := "evenchess-pref__feature-label")(
+                              strong(feature.label),
+                              span(cls := "text shy")(s" ${feature.surface}")
+                            ),
+                            radios(
+                              form(s"evenchess.defaultFeatureToggles.${feature.key}"),
+                              evenChessBooleanChoices
+                            )
+                          )
+                      )
+                )
+              ),
+              "evenchessPreferredFeatureToggles"
+            ),
+            setting(
+              "Overlay density",
+              radios(form("evenchess.overlayDensity"), UserSettings.OverlayDensity.choices),
+              "evenchessOverlayDensity"
+            ),
+            setting(
+              "Coaching card verbosity",
+              radios(form("evenchess.coachingCardVerbosity"), UserSettings.CoachingCardVerbosity.choices),
+              "evenchessCoachingCardVerbosity"
+            ),
+            setting(
+              "Board highlight intensity",
+              radios(form("evenchess.boardHighlightIntensity"), UserSettings.BoardHighlightIntensity.choices),
+              "evenchessBoardHighlightIntensity"
+            ),
+            setting(
+              "Offset Count display",
+              radios(form("evenchess.offsetCountDisplay"), UserSettings.OffsetCountDisplay.choices),
+              "evenchessOffsetCountDisplay"
+            ),
+            setting(
+              "AI summaries",
+              radios(form("evenchess.aiSummaryPreference"), UserSettings.AiSummaryPreference.choices),
+              "evenchessAiSummaryPreference"
+            ),
+            setting(
+              "TTS Coach",
+              radios(form("evenchess.ttsEnabled"), evenChessBooleanChoices),
+              "evenchessTtsEnabled"
+            ),
+            setting(
+              "Auto-read new coach text",
+              radios(form("evenchess.ttsAutoSpeak"), evenChessBooleanChoices),
+              "evenchessTtsAutoSpeak"
+            ),
+            setting(
+              "Auto-read delay",
+              radios(form("evenchess.ttsAutoDelaySeconds"), ttsAutoDelayChoices),
+              "evenchessTtsAutoDelay"
+            ),
+            setting(
+              "TTS voice",
+              radios(form("evenchess.ttsVoice"), UserSettings.TtsVoice.choices),
+              "evenchessTtsVoice"
+            ),
+            setting(
+              "TTS rate",
+              radios(form("evenchess.ttsRatePercent"), ttsRateChoices),
+              "evenchessTtsRate"
+            ),
+            setting(
+              "TTS volume",
+              radios(form("evenchess.ttsVolumePercent"), ttsVolumeChoices),
+              "evenchessTtsVolume"
+            ),
+            setting(
+              "TTS queue",
+              radios(form("evenchess.ttsQueueBehavior"), UserSettings.TtsQueueBehavior.choices),
+              "evenchessTtsQueueBehavior"
+            ),
+            setting(
+              "Mute TTS during opponent turn",
+              radios(form("evenchess.ttsMuteDuringOpponentTurn"), evenChessBooleanChoices),
+              "evenchessTtsMuteDuringOpponentTurn"
+            ),
+            setting(
+              "Study AI overlays",
+              radios(form("evenchess.studyAiOverlay"), evenChessBooleanChoices),
+              "evenchessStudyAiOverlay"
+            ),
+            setting(
+              "Opening AI overlays",
+              radios(form("evenchess.openingAiOverlay"), evenChessBooleanChoices),
+              "evenchessOpeningAiOverlay"
+            ),
+            setting(
+              "EvenChess telemetry",
+              radios(form("evenchess.telemetryPreference"), UserSettings.TelemetryPreference.choices),
+              "evenchessTelemetryPreference"
             )
           ),
           p(cls := "saved text none", dataIcon := Icon.Checkmark)(trp.yourPreferencesHaveBeenSaved())

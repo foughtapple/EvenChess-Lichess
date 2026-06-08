@@ -61,7 +61,7 @@ lazy val modules = Seq(
   // level 1
   core, coreI18n,
   // level 2
-  ui, common, tree,
+  ui, common, evenchess, tree,
   // level 3
   db, room, search,
   // level 4
@@ -108,6 +108,11 @@ lazy val common = module("common",
   Seq(
     kamon.core, scaffeine, apacheText, chess.playJson,
   ) ++ flexmark.bundle
+)
+
+lazy val evenchess = module("evenchess",
+  Seq(),
+  tests.bundle
 )
 
 lazy val db = module("db",
@@ -431,7 +436,7 @@ lazy val relation = module("relation",
 )
 
 lazy val pref = module("pref",
-  Seq(memo, ui),
+  Seq(memo, ui, evenchess),
   Seq()
 )
 
@@ -517,7 +522,7 @@ lazy val ui = module("ui",
 )
 
 lazy val web = module("web",
-  Seq(ui, memo),
+  Seq(ui, memo, evenchess),
   playWs.bundle ++ tests.bundle ++ Seq(
     play.logback, play.server, play.netty,
     kamon.prometheus

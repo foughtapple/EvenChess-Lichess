@@ -33,6 +33,21 @@ import * as blur from './blur';
 import * as cevalSub from './cevalSub';
 import { CorresClockController } from './corresClock/corresClockCtrl';
 import { valid as crazyValid, init as crazyInit, onEnd as crazyEndHook } from './crazy/crazyCtrl';
+import {
+  evenChessTestGroundFullFen,
+  requestEvenChessTestGroundOverlay,
+  requestEvenChessTestGroundOverlayForPosition,
+} from './evenchessTestGround';
+import {
+  evenChessTestGroundMoveEvent,
+  evenChessTestGroundMoveQueryParam,
+  evenChessTestGroundMoveResultEvent,
+  isEvenChessTestGroundMoveBridgeAllowed,
+  readEvenChessTestGroundMoveFromLocation,
+  readEvenChessTestGroundMoveUci,
+  type EvenChessTestGroundMoveResult,
+  validateEvenChessTestGroundMove,
+} from './evenchessTestGroundMoveBridge';
 import { boardOrientation, reload as groundReload } from './ground';
 import type {
   Step,
@@ -46,6 +61,7 @@ import type {
   ApiMove,
   ApiEnd,
   EventsWithPayload,
+  EvenChessLiveOverlay,
 } from './interfaces';
 import { init as keyboardInit } from './keyboard';
 import MoveOn from './moveOn';
@@ -54,6 +70,14 @@ import { make as makeSocket, type RoundSocket } from './socket';
 import * as title from './title';
 import TransientMove from './transientMove';
 import * as util from './util';
+import {
+  applyEvenChessLiveOverlay,
+  clearEvenChessLiveOverlay,
+  evenChessBoardShapes,
+  initializeEvenChessDisplayForGame,
+  syncEvenChessCoachTextSnapshot,
+  syncEvenChessProposedMovePreview,
+} from './view/evenchessOverlay';
 import { endGameView } from './view/main';
 import { userTxt } from './view/user';
 import * as xhr from './xhr';
@@ -96,6 +120,8 @@ export default class RoundController implements MoveRootCtrl {
   server: Server;
   nvui?: NvuiPlugin;
   vibration: Prop<boolean> = storedBooleanProp('vibration', false);
+  evenChessOverlayRefreshTimers: Timeout[] = [];
+  evenChessTestGroundUrlMoveConsumed = false;
 
   constructor(
     readonly opts: RoundOpts,
@@ -152,6 +178,9 @@ export default class RoundController implements MoveRootCtrl {
     pubsub.on('zen', toggleZenMode);
 
     if (!this.opts.noab && this.isPlaying()) ab.init(this);
+    initializeEvenChessDisplayForGame(this.data);
+    setTimeout(() => requestEvenChessTestGroundOverlay(this), 250);
+    this.initEvenChessTestGroundMoveBridge();
   }
 
   private readonly showExpiration = () => {
@@ -262,6 +291,7 @@ export default class RoundController implements MoveRootCtrl {
       };
     this.chessground.cancelPremove();
     this.chessground.set(config);
+    this.updateEvenChessAutoShapes();
     if (s.san && isForwardStep) site.sound.move(s);
     this.autoScroll();
     pubsub.emit('ply', ply);
@@ -270,6 +300,54 @@ export default class RoundController implements MoveRootCtrl {
   };
 
   canMove = (): boolean => !this.replaying() && this.data.player.color === this.chessground.state.turnColor;
+
+  private readonly initEvenChessTestGroundMoveBridge = (): void => {
+    if (!isEvenChessTestGroundMoveBridgeAllowed(location)) return;
+    document.addEventListener(evenChessTestGroundMoveEvent, this.onEvenChessTestGroundMoveBridge as EventListener);
+  };
+
+  private readonly onEvenChessTestGroundMoveBridge = (event: CustomEvent): void => {
+    const result = this.handleEvenChessTestGroundMove(readEvenChessTestGroundMoveUci(event.detail));
+    this.publishEvenChessTestGroundMoveResult(result);
+  };
+
+  private readonly handleEvenChessTestGroundMove = (uci: string | undefined): EvenChessTestGroundMoveResult => {
+    const base = { uci, gameId: this.data.game.id, ply: this.ply };
+    if (this.data.player.spectator) return { ...base, status: 'rejected', reason: 'spectator' };
+    if (!this.chessground) return { ...base, status: 'rejected', reason: 'board_not_ready' };
+    if (!this.isPlaying()) return { ...base, status: 'rejected', reason: 'not_playing' };
+    if (!this.canMove()) return { ...base, status: 'rejected', reason: 'not_player_turn' };
+
+    const validation = validateEvenChessTestGroundMove(uci, this.data.possibleMoves);
+    if (!validation.ok) return { ...base, uci: validation.uci ?? uci, status: 'rejected', reason: validation.reason };
+
+    this.pluginMove(validation.orig, validation.dest, validation.promotion);
+    return { ...base, uci: validation.uci, status: 'accepted' };
+  };
+
+  private readonly publishEvenChessTestGroundMoveResult = (result: EvenChessTestGroundMoveResult): void => {
+    const root = document.documentElement;
+    root.setAttribute('data-evenchess-testground-move-status', result.status);
+    root.setAttribute('data-evenchess-testground-move-uci', result.uci ?? '');
+    root.setAttribute('data-evenchess-testground-move-reason', result.reason ?? '');
+    document.dispatchEvent(new CustomEvent(evenChessTestGroundMoveResultEvent, { detail: result }));
+  };
+
+  private readonly runEvenChessTestGroundMoveFromUrl = (): void => {
+    if (this.evenChessTestGroundUrlMoveConsumed || !isEvenChessTestGroundMoveBridgeAllowed(location)) return;
+    const uci = readEvenChessTestGroundMoveFromLocation(location);
+    if (!uci) return;
+    this.evenChessTestGroundUrlMoveConsumed = true;
+    this.clearEvenChessTestGroundMoveFromUrl();
+    setTimeout(() => this.publishEvenChessTestGroundMoveResult(this.handleEvenChessTestGroundMove(uci)), 100);
+  };
+
+  private readonly clearEvenChessTestGroundMoveFromUrl = (): void => {
+    const url = new URL(location.href);
+    if (!url.searchParams.has(evenChessTestGroundMoveQueryParam)) return;
+    url.searchParams.delete(evenChessTestGroundMoveQueryParam);
+    history.replaceState(history.state, document.title, `${url.pathname}${url.search}${url.hash}`);
+  };
 
   replayEnabledByPref = (): boolean => {
     const d = this.data;
@@ -340,6 +418,15 @@ export default class RoundController implements MoveRootCtrl {
   pluginUpdate = (fen: string): void => {
     this.voiceMove?.update({ fen, canMove: this.canMove() });
     this.keyboardMove?.update({ fen, canMove: this.canMove() });
+    this.requestEvenChessOverlayAfterPositionChange(this.ply, fen);
+  };
+
+  private readonly requestEvenChessOverlayAfterPositionChange = (ply?: number, fen?: string): void => {
+    requestEvenChessTestGroundOverlayForPosition(this, true, { ply, fen });
+    this.evenChessOverlayRefreshTimers.forEach(clearTimeout);
+    this.evenChessOverlayRefreshTimers = [650, 1800, 3200].map(delay =>
+      setTimeout(() => requestEvenChessTestGroundOverlay(this), delay),
+    );
   };
 
   sendMove = (orig: Key, dest: Key, prom: Role | undefined, meta: MoveMetadata): void => {
@@ -442,7 +529,7 @@ export default class RoundController implements MoveRootCtrl {
         },
         check: !!o.check,
       });
-      if (this.googlyEyes) this.chessground.setAutoShapes(this.googlyEyes());
+      this.updateEvenChessAutoShapes();
       if (o.status?.name === 'mate') {
         site.sound.play('checkmate', o.volume);
       } else if (o.check) {
@@ -462,6 +549,8 @@ export default class RoundController implements MoveRootCtrl {
       crazy: o.crazyhouse,
     };
     d.steps.push(step);
+    clearEvenChessLiveOverlay(d, 'move-played', o.ply, evenChessTestGroundFullFen(d, o.ply, o.fen));
+    this.updateEvenChessAutoShapes();
     this.justDropped = undefined;
     this.justCaptured = undefined;
     game.setOnGame(d, playedColor, true);
@@ -509,6 +598,26 @@ export default class RoundController implements MoveRootCtrl {
     site.sound.saySan(step.san);
     this.server.alive();
     return true; // prevents default socket pubsub
+  };
+
+  applyEvenChessLiveOverlay = (overlay: EvenChessLiveOverlay): void => {
+    applyEvenChessLiveOverlay(this.data, overlay);
+    syncEvenChessCoachTextSnapshot(this);
+    this.updateEvenChessAutoShapes();
+    this.redraw();
+  };
+
+  requestEvenChessOverlayRefresh = (): void => {
+    requestEvenChessTestGroundOverlay(this, true);
+  };
+
+  updateEvenChessAutoShapes = (): void => {
+    if (!this.chessground) return;
+    this.chessground.setAutoShapes([...(this.googlyEyes?.() ?? []), ...evenChessBoardShapes(this)]);
+  };
+
+  onEvenChessDrawableChange = (): void => {
+    if (syncEvenChessProposedMovePreview(this)) this.redraw();
   };
 
   crazyValid = (role: Role, key: Key): boolean => crazyValid(this.data, role, key);
@@ -867,6 +976,9 @@ export default class RoundController implements MoveRootCtrl {
 
   setChessground = (cg: CgApi): void => {
     this.chessground = cg;
+    this.updateEvenChessAutoShapes();
+    if (syncEvenChessCoachTextSnapshot(this)) this.redraw();
+    this.runEvenChessTestGroundMoveFromUrl();
     const up = { fen: this.stepAt(this.ply).fen, canMove: this.canMove(), cg };
     pubsub.on('board.change', (is3d: boolean) => {
       this.chessground.state.addPieceZIndex = is3d;
@@ -918,7 +1030,7 @@ export default class RoundController implements MoveRootCtrl {
   private googlyEyes?: () => DrawShape[];
 
   googlyEyesStart: () => void = memoize(async () => {
-    const redraw = () => this.googlyEyes && this.chessground.setAutoShapes(this.googlyEyes());
+    const redraw = () => this.updateEvenChessAutoShapes();
     const { makeGooglyShapes }: any = await site.asset.loadEsm('bits.googlyHorsey', {
       init: { cg: this.chessground, redraw },
     });

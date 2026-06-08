@@ -6,6 +6,7 @@ import scalalib.model.Language
 
 import lila.core.i18n.I18nModule
 import lila.core.report.ScoreThresholds
+import lila.evenchess.AccountMonetisationUi
 import lila.ui.*
 
 import ScalatagsTemplate.{ *, given }
@@ -16,7 +17,7 @@ final class layout(helpers: Helpers, assetHelper: lila.web.ui.AssetFullHelper)(
     reportScore: () => Int
 ):
   import helpers.{ *, given }
-  import assetHelper.{ defaultCsp, netConfig, cashTag, siteName }
+  import assetHelper.{ defaultCsp, netConfig, cashTag }
 
   val doctype = raw("<!DOCTYPE html>")
   def htmlTag(using lang: Lang) = html(st.lang := lang.code, dir := isRTL(lang).option("rtl"))
@@ -126,6 +127,19 @@ final class layout(helpers: Helpers, assetHelper: lila.web.ui.AssetFullHelper)(
     div(cls := "dasher")(
       button(id := "user_tag", cls := "toggle link")(me.username),
       div(id := "dasher_app", cls := "dropdown")
+    )
+
+  def evenChessTokenBalance(me: User) =
+    val balance = AccountMonetisationUi.TopBarGameTokenBalance.forLichessUser(me.username.value, System.currentTimeMillis)
+    a(
+      cls := "link evenchess-token-balance",
+      href := balance.href,
+      title := balance.title,
+      aria.label := balance.ariaLabel,
+      attr("data-evenchess-token-source") := balance.source
+    )(
+      span(cls := "evenchess-token-balance__count")(balance.displayCount),
+      span(cls := "evenchess-token-balance__label")(balance.displayLabel)
     )
 
   def anonDasher(using ctx: Context) =
@@ -295,8 +309,7 @@ final class layout(helpers: Helpers, assetHelper: lila.web.ui.AssetFullHelper)(
         )
 
     private val siteNameFrag: Frag =
-      if siteName == "lichess.org" then frag("lichess", span(".org"))
-      else frag(siteName)
+      frag("EvenChess")
 
     def apply(
         zenable: Boolean,
@@ -338,7 +351,7 @@ final class layout(helpers: Helpers, assetHelper: lila.web.ui.AssetFullHelper)(
           else
             ctx.me
               .map: me =>
-                frag(allNotifications(challenges, notifications), dasher(me))
+                frag(allNotifications(challenges, notifications), evenChessTokenBalance(me), dasher(me))
               .getOrElse:
                 error.not.option(anonDasher)
         )

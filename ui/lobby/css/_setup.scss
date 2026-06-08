@@ -117,6 +117,98 @@ $c-slider: $c-setup;
     }
   }
 
+  .evenchess-setup {
+    @extend %box-neat;
+
+    border-top: 3px solid #1f79d8;
+    padding: 1rem;
+    background: $c-bg-box;
+
+    &__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: 0.75rem;
+    }
+
+    &__field {
+      @extend %flex-column;
+
+      gap: 0.35rem;
+      min-width: 0;
+
+      span {
+        color: $c-font-dim;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      strong {
+        line-height: 2.3rem;
+      }
+
+      &--summary strong {
+        color: #1f79d8;
+      }
+
+      input,
+      select {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 2.3rem;
+        border: $border;
+        border-radius: $box-radius-size;
+        padding: 0 0.6rem;
+        background: $c-bg-input;
+        color: $c-font;
+      }
+    }
+
+    &__confirm {
+      @extend %flex-center-nowrap;
+
+      gap: 0.55rem;
+      align-items: flex-start;
+      color: $c-font-dim;
+      line-height: 1.35;
+
+      &--inline {
+        align-items: center;
+        min-height: 2.3rem;
+      }
+    }
+
+    &__rule {
+      margin: 0;
+      color: $c-font-dim;
+      line-height: 1.42;
+    }
+
+    &__gate {
+      margin: 0;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid #234f88;
+      border-radius: $box-radius-size;
+      background: #0b1f3f;
+      color: #d7e5f8;
+      line-height: 1.4;
+
+      strong {
+        color: #fff;
+      }
+    }
+
+    &__free-tokens {
+      margin: 0;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid #1aa78d;
+      border-radius: $box-radius-size;
+      background: rgba(26, 167, 141, 0.12);
+      color: #0a5f52;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+  }
+
   .fen__form {
     @extend %flex-center-nowrap;
   }

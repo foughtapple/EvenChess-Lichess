@@ -43,12 +43,16 @@
   grid-area: kb-move;
 }
 
+.evenchess-live {
+  grid-area: coach;
+}
+
 .round__app {
   display: grid;
 
   @include mq-is-col1 {
-    grid-template-rows: auto $col1-user-height $col1-mat-height auto auto $col1-mat-height $col1-user-height auto auto auto auto 0;
-    grid-template-areas: 'pocket-top' 'user-top' 'mat-top' 'board' 'expi-bot' 'mat-bot' 'user-bot' 'pocket-bot' 'controls' 'moves' 'voice' 'kb-move';
+    grid-template-rows: auto $col1-user-height $col1-mat-height auto auto auto $col1-mat-height $col1-user-height auto auto auto auto 0;
+    grid-template-areas: 'pocket-top' 'user-top' 'mat-top' 'board' 'coach' 'expi-bot' 'mat-bot' 'user-bot' 'pocket-bot' 'controls' 'moves' 'voice' 'kb-move';
 
     // Put clocks and players in the same grid cell.
     // This allows having a single cell column, instead of
@@ -100,7 +104,7 @@
   @include mq-at-least-col2 {
     grid-template-areas:
       'board voice'
-      'board .'
+      'board coach'
       'board mat-top'
       'board clock-top'
       'board expi-top'
@@ -119,6 +123,33 @@
 
     &__table {
       grid-area: 5 / 2 / 11 / 3;
+    }
+
+    &.evenchess-live-layout {
+      grid-template-areas:
+        'levels ece-eval board coach'
+        'levels ece-eval board coach'
+        'levels ece-eval board voice'
+        'levels ece-eval board mat-top'
+        'levels ece-eval board clock-top'
+        'levels ece-eval board expi-top'
+        'levels ece-eval board user-top'
+        'levels ece-eval board moves'
+        'levels ece-eval board controls'
+        'levels ece-eval board user-bot'
+        'levels ece-eval board expi-bot'
+        'levels ece-eval board clock-bot'
+        'levels ece-eval board mat-bot'
+        'levels ece-eval board .'
+        '. . kb-move .';
+      grid-template-columns:
+        minmax(216px, 260px) 18px
+        clamp(420px, calc(var(---col2-uniboard-width) - 286px), var(---col2-uniboard-width))
+        $col2-uniboard-table;
+
+      .round__app__table {
+        grid-area: 5 / 4 / 11 / 5;
+      }
     }
 
     .expiration-top {
@@ -147,10 +178,21 @@
 
   @include mq-at-least-col3 {
     grid-template-columns: var(---col3-uniboard-width) $col3-uniboard-table;
+
+    &.evenchess-live-layout {
+      grid-template-columns:
+        minmax(228px, 280px) 18px
+        clamp(520px, calc(var(---col3-uniboard-width) - 306px), var(---col3-uniboard-width))
+        $col3-uniboard-table;
+    }
   }
 
   @include mq-is-col2-squeeze {
     grid-template-columns: $col2-uniboard-squeeze-width $col2-uniboard-squeeze-table;
+
+    &.evenchess-live-layout {
+      grid-template-columns: minmax(196px, 220px) 16px minmax(390px, 1fr) $col2-uniboard-squeeze-table;
+    }
   }
 
   &__board {

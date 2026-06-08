@@ -6,6 +6,7 @@ enum PrefCateg(val slug: String):
   case ChessClock extends PrefCateg("chess-clock")
   case GameBehavior extends PrefCateg("game-behavior")
   case Privacy extends PrefCateg("privacy")
+  case EvenChess extends PrefCateg("evenchess")
 
 object PrefCateg:
 

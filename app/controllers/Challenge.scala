@@ -103,6 +103,7 @@ final class Challenge(env: Env) extends LilaController(env):
             .accept(c, ctx.req.sid, color)
             .flatMap:
               _.fold("The Challenge has already been accepted".raise): pov =>
+                persistEvenChessFriendPolicy(c, pov)
                 negotiateApi(
                   html = Redirect(routes.Round.watcher(pov.gameId, color | Color.white)),
                   api = _ => env.api.roundApi.player(pov, scalalib.data.Preload.none, none).map { Ok(_) }
@@ -142,10 +143,55 @@ final class Challenge(env: Env) extends LilaController(env):
                 .getOrElse:
                   val sri = lila.security.Mobile.LichessMobileUa.sriFromUA
                   allow:
-                    api.accept(c, sri.map(_.value), color).inject(jsonOkResult)
+                    api.accept(c, sri.map(_.value), color).map: pov =>
+                      pov.foreach(persistEvenChessFriendPolicy(c, _))
+                      jsonOkResult
                   .rescue: err =>
                     fuccess(BadRequest(jsonError(err)))
     }
+
+  private def persistEvenChessFriendPolicy(c: ChallengeModel, pov: Pov): Unit =
+    import lila.evenchess.GamePolicy
+    import lila.evenchess.EvenChessMode.{ SetLevel, TimeControlBucket }
+    import lila.evenchess.GamePolicy.{ GamePolicyCreateRequest, GamePolicyMode, PlayerPolicy, PolicyVersions }
+
+    def bucket =
+      c.timeControl match
+        case lila.challenge.Challenge.TimeControl.Clock(config) =>
+          chess.Speed(config) match
+            case chess.Speed.Bullet    => TimeControlBucket.Bullet
+            case chess.Speed.Blitz     => TimeControlBucket.Blitz
+            case chess.Speed.Rapid     => TimeControlBucket.Rapid
+            case chess.Speed.Classical => TimeControlBucket.Classical
+            case _                     => TimeControlBucket.Casual
+        case lila.challenge.Challenge.TimeControl.Correspondence(_) => TimeControlBucket.Correspondence
+        case lila.challenge.Challenge.TimeControl.Unlimited         => TimeControlBucket.Casual
+
+    (c.challengerUserId, c.destUserId, c.evenChessChallengerLevel, c.evenChessRecipientLevel).mapN:
+      (challengerId, recipientId, challengerLevel, recipientLevel) =>
+        val challengerIsWhite = c.finalColor == chess.Color.white
+        val whiteId = if challengerIsWhite then challengerId else recipientId
+        val blackId = if challengerIsWhite then recipientId else challengerId
+        val whiteLevel = if challengerIsWhite then challengerLevel else recipientLevel
+        val blackLevel = if challengerIsWhite then recipientLevel else challengerLevel
+        val now = System.currentTimeMillis
+        val request = GamePolicyCreateRequest(
+          gameId = pov.gameId.value,
+          mode = if c.rated.yes then GamePolicyMode.NormalRatedEvenChess else GamePolicyMode.CasualEvenChess,
+          rated = c.rated.yes,
+          timeControlBucket = bucket,
+          white = PlayerPolicy(whiteId.value, SetLevel(whiteLevel), "friend"),
+          black = PlayerPolicy(blackId.value, SetLevel(blackLevel), "friend"),
+          versions = PolicyVersions.current,
+          featureFlags = Map(
+            "evenchess.friendContract" -> "true",
+            "evenchess.friendContractSource" -> "native_challenge"
+          ),
+          createdAt = now
+        )
+        GamePolicy.GamePolicyRecord
+          .fromRequest(request, now)
+          .foreach(record => GamePolicy.Runtime.gamePolicyRepository.put(record))
 
   private def withChallengeAnonCookie(cond: Boolean, c: ChallengeModel, owner: Boolean)(
       res: Result

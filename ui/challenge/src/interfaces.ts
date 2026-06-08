@@ -31,6 +31,7 @@ export interface Challenge {
   challenger?: ChallengeUser;
   destUser?: ChallengeUser;
   rules?: unknown[];
+  evenChessInfo?: string;
   variant: Variant;
   initialFen: FEN;
   rated: boolean;

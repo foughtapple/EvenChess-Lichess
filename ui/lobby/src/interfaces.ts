@@ -61,6 +61,7 @@ export interface LobbyOpts {
   playban: boolean;
   showRatings: boolean;
   data: LobbyData;
+  evenChessTokenBalance?: EvenChessTokenBalance;
   bots?: boolean;
 }
 
@@ -113,6 +114,44 @@ export interface PoolMember {
   blocking?: string;
 }
 
+export interface EvenChessSearchStatus {
+  ok: boolean;
+  searchKey?: string;
+  pollUrl?: string;
+  redirectUrl?: string;
+  queueLabel?: string;
+  setLevel?: number;
+  targetLevel?: number;
+  preferredSetLevel?: number;
+  searchScenario?: string;
+  accessLabel?: string;
+  tokenWaiverMessage?: string;
+  waitingForPairing?: boolean;
+  requiresPairingConfirmation?: boolean;
+  error?: string;
+  matchmaking?: {
+    matched?: boolean;
+    status?: string;
+    matchContract?: {
+      whiteSetLevel?: number;
+      blackSetLevel?: number;
+      preferenceFlags?: {
+        scenario?: string;
+        requesterPreferredLevelMatched?: boolean;
+        candidatePreferredLevelMatched?: boolean;
+        widenedSearch?: boolean;
+        unevenMatch?: boolean;
+        unevenReason?: string;
+      };
+    };
+    botMode?: {
+      enabled: boolean;
+      disclosure: string;
+      elapsedMillis: number;
+    };
+  };
+}
+
 export type PoolId = string;
 export type PoolRange = string;
 
@@ -121,12 +160,33 @@ export interface SetupStore {
   fen: FEN;
   timeMode: TimeMode;
   gameMode: GameMode;
+  evenChessSetLevel: number;
+  evenChessTargetLevel: string;
+  evenChessApplyPreferences: boolean;
+  evenChessPlayerTargetLevel: string;
+  evenChessOpponentTargetLevel: string;
+  evenChessStrictSearch: boolean;
+  evenChessConfirmLevelContract: boolean;
+  evenChessFriendLevelMode: string;
+  evenChessFriendMyLevel: string;
+  evenChessFriendOpponentLevel: string;
   ratingMin: number;
   ratingMax: number;
   aiLevel: number;
   time: number;
   increment: number;
   days: number;
+}
+
+export interface EvenChessTokenBalance {
+  visibleGameTokens: number;
+  displayCount: string;
+  displayLabel: string;
+  href: string;
+  source: string;
+  subscriptionActive: boolean;
+  freeMatchTokensActive?: boolean;
+  freeMatchTokensMessage?: string;
 }
 
 export interface ForceSetupOptions {

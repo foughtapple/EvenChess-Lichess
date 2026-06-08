@@ -95,6 +95,7 @@ export function makeConfig(ctrl: RoundController): CgConfig {
     drawable: {
       enabled: true,
       defaultSnapToValidMove: storage.boolean('arrow.snap').getOrDefault(true),
+      onChange: ctrl.onEvenChessDrawableChange,
     },
     disableContextMenu: true,
   };

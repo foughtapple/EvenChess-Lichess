@@ -1,0 +1,233 @@
+.evenchess-ai {
+  display: flex;
+  flex-flow: column nowrap;
+  gap: 0.65rem;
+  margin-bottom: 0.8rem;
+  padding: 0.8rem;
+  border: 1px solid #2f6ea1;
+  border-radius: 8px;
+  background: #10243a;
+  color: #f0f7ff;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  &__brand {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  &__surface {
+    padding: 0.15rem 0.45rem;
+    border: 1px solid #7db7e8;
+    border-radius: 999px;
+    color: #c8e6ff;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  &__card {
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(125, 183, 232, 0.35);
+  }
+
+  &__card-head {
+    display: flex;
+    min-width: 0;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  &__tts {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #7db7e8;
+    border-radius: 8px;
+    background: #0a3555;
+    color: #f0f7ff;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      border-color: #2dd4bf;
+      color: #fff;
+    }
+  }
+
+  &__title {
+    margin: 0 0 0.35rem;
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  &__body {
+    margin: 0;
+    color: #dceeff;
+    line-height: 1.35;
+  }
+
+  &__bullets {
+    margin: 0.5rem 0 0;
+    padding-inline-start: 1.1rem;
+    color: #c8e6ff;
+  }
+
+  &__source {
+    margin: 0.55rem 0 0;
+    color: #91bfe7;
+    font-size: 0.75rem;
+  }
+}
+
+.evenchess-review {
+  display: flex;
+  flex-flow: column nowrap;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid #2f6ea1;
+  border-radius: 8px;
+  background: #07172a;
+  color: #f0f7ff;
+
+  &__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+  }
+
+  &__brand {
+    display: block;
+    color: #2dd4bf;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  &__subhead,
+  &__meta,
+  &__quota {
+    color: #a8c9ec;
+    font-size: 0.75rem;
+    line-height: 1.25;
+  }
+
+  &__meta {
+    white-space: nowrap;
+  }
+
+  &__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  &__button {
+    min-height: 2rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #2dd4bf;
+    border-radius: 6px;
+    background: #082740;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.15;
+    cursor: pointer;
+
+    &:disabled {
+      border-color: #275173;
+      color: #86a6c6;
+      cursor: default;
+      opacity: 0.8;
+    }
+  }
+
+  &__button--secondary {
+    border-color: #4f8fc1;
+  }
+
+  &__quota {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.8rem;
+  }
+
+  &__status,
+  &__error {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.25;
+  }
+
+  &__status {
+    color: #b8d6f3;
+  }
+
+  &__error {
+    color: #ffb4a8;
+  }
+
+  &__body {
+    max-height: 14rem;
+    overflow: auto;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(125, 183, 232, 0.32);
+
+    h3 {
+      margin: 0 0 0.35rem;
+      color: #fff;
+      font-size: 0.9rem;
+      line-height: 1.25;
+    }
+
+    p {
+      margin: 0 0 0.55rem;
+      color: #dceeff;
+      line-height: 1.35;
+    }
+  }
+
+  &__summary {
+    margin-top: 0.65rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(125, 183, 232, 0.24);
+
+    strong {
+      color: #2dd4bf;
+      font-size: 0.78rem;
+    }
+  }
+}
+
+.analyse__side-stack > .evenchess-review {
+  margin-bottom: 0;
+}
+
+@media (width < 800px) {
+  .evenchess-review {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 0;
+
+    &__actions {
+      grid-template-columns: 1fr;
+    }
+
+    &__meta {
+      white-space: normal;
+      text-align: right;
+    }
+  }
+}

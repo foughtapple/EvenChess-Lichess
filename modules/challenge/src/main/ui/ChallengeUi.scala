@@ -81,7 +81,12 @@ final class ChallengeUi(helpers: Helpers):
           h2("Custom rules:"),
           div(fragList(c.rules.toList.map(showRule), "/"))
         )
-      )
+      ),
+      c.evenChessInfo.map: info =>
+        div(cls := "rules evenchess-challenge-info")(
+          h2("EvenChess:"),
+          div(info)
+        )
     )
 
   private def showRule(r: GameRule) =

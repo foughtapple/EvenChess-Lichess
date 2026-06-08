@@ -5,13 +5,15 @@ import play.api.libs.json.Json
 import lila.app.UiEnv.{ *, given }
 import lila.app.mashup.Preload.Homepage
 import lila.core.perf.UserWithPerfs
+import lila.evenchess.{ AccountMonetisationUi, AdminBackendSettings, PublicShell }
 
 object home:
 
   def apply(homepage: Homepage)(using ctx: Context) =
     import homepage.*
+    val evenChessCopy = PublicShell.PublicCopy
     Page("")
-      .copy(fullTitle = s"$siteName • ${trans.site.freeOnlineChess.txt()}".some)
+      .copy(fullTitle = s"${evenChessCopy.productName} - ${evenChessCopy.eyebrow}".some)
       .i18n(_.variant)
       .js(
         PageModule(
@@ -20,6 +22,27 @@ object home:
             .obj(
               "data" -> data,
               "showRatings" -> ctx.pref.showRatings
+            )
+            .add(
+              "evenChessTokenBalance",
+              ctx.me.map: me =>
+                val now = System.currentTimeMillis
+                val balance = AccountMonetisationUi.TopBarGameTokenBalance.forLichessUser(me.username.value, now)
+                val freeMatchTokenWindow = AdminBackendSettings.FreeMatchTokenWindow(
+                  enabled = env.web.settings.evenChessFreeMatchTokensEnabled.get(),
+                  startsAt = env.web.settings.evenChessFreeMatchTokensStartsAt.get(),
+                  endsAt = env.web.settings.evenChessFreeMatchTokensEndsAt.get()
+                )
+                Json.obj(
+                  "visibleGameTokens" -> balance.visibleGameTokens,
+                  "displayCount" -> balance.displayCount,
+                  "displayLabel" -> balance.displayLabel,
+                  "href" -> balance.href,
+                  "source" -> balance.source,
+                  "subscriptionActive" -> balance.subscriptionActive,
+                  "freeMatchTokensActive" -> freeMatchTokenWindow.activeAt(now),
+                  "freeMatchTokensMessage" -> freeMatchTokenWindow.publicMessageAt(now)
+                )
             )
             .add("hasUnreadLichessMessage", hasUnreadLichessMessage)
             .add("bots", Granter.opt(_.Beta))
@@ -30,9 +53,9 @@ object home:
       .graph(
         OpenGraph(
           image = staticAssetUrl("logo/lichess-tile-wide.png").some,
-          title = "The best free, adless Chess server",
+          title = evenChessCopy.homepageTitle,
           url = netBaseUrl.into(Url),
-          description = trans.site.siteDescription.txt()
+          description = evenChessCopy.homepageSummary
         )
       )
       .hrefLangs(lila.ui.LangPath("/")):
@@ -82,12 +105,11 @@ object home:
             else
               div(cls := "about-side")(
                 ctx.blind.option(h2(trans.site.about())),
-                trans.site.xIsAFreeYLibreOpenSourceChessServer(
-                  "Lichess",
-                  a(cls := "blue", href := routes.Plan.features)(trans.site.really.txt())
-                ),
+                strong(evenChessCopy.productName),
+                " is a Lichess-powered assisted chess variant. ",
+                "Platform coaching is disclosed, capped, logged, and reflected in ECR. ",
                 " ",
-                a(href := "/about")(trans.site.aboutX("Lichess"), "...")
+                a(href := "/source")("Source and attribution")
               )
           ),
           currentGame
@@ -99,6 +121,16 @@ object home:
             .getOrElse:
               if ctx.blind then blindLobby(blindGames) else bits.lobbyApp
           ,
+          div(cls := "lobby__evenchess-summary")(
+            h2("What is EvenChess?"),
+            p(evenChessCopy.homepageSummary),
+            ul(cls := "lobby__evenchess-facts"):
+              evenChessCopy.homepageFacts.map: fact =>
+                li(
+                  strong(fact.label),
+                  span(fact.body)
+                )
+          ),
           div(cls := "lobby__table")(
             div(cls := "lobby__start")(
               button(cls := "button button-metal lobby__start__button lobby__start__button--hook")(
@@ -116,22 +148,6 @@ object home:
             featured.map: g =>
               views.game.mini(Pov.naturalOrientation(g), tv = true)
           ,
-          div(cls := "lobby__support")(
-            a(href := routes.Plan.index())(
-              iconTag(patronIconChar),
-              span(cls := "lobby__support__text")(
-                strong(trans.patron.donate()),
-                span(trans.patron.becomePatron())
-              )
-            ),
-            a(href := "/swag")(
-              iconTag(Icon.Tshirt),
-              span(cls := "lobby__support__text")(
-                strong("Swag Store"),
-                span(trans.site.playChessInStyle())
-              )
-            )
-          ),
           puzzle.map: p =>
             views.puzzle.bits.dailyLink(p)(cls := "lobby__puzzle"),
           views.ublog.ui.homeCarousel(ublogPosts),

@@ -14,7 +14,18 @@ import { alert } from 'lib/view';
 import * as xhr from 'lib/xhr';
 
 import type LobbyController from './ctrl';
-import type { ForceSetupOptions, GameMode, GameType, PoolMember, SetupStore } from './interfaces';
+import {
+  evenChessClockParamsForPoolId,
+  evenChessComputerSetLevel,
+  evenChessLevelValid,
+  evenChessPendingPoolId,
+  evenChessPreferredSetLevelParam,
+  evenChessSearchStatusDebugEnabled,
+  evenChessSetLevelForGameType,
+  evenChessSubmitMode,
+  evenChessTimeControlKeyForPoolId,
+} from './evenchessSetup';
+import type { EvenChessSearchStatus, ForceSetupOptions, GameMode, GameType, PoolMember, SetupStore } from './interfaces';
 import { keyToId, variants } from './options';
 
 const getPerf = (variant: VariantKey, tc: TimeControl): Perf =>
@@ -35,6 +46,16 @@ export default class SetupController {
   variant: Prop<VariantKey>;
   fen: Prop<string>;
   gameMode: Prop<GameMode>;
+  evenChessSetLevel: Prop<number>;
+  evenChessTargetLevel: Prop<string>;
+  evenChessApplyPreferences: Prop<boolean>;
+  evenChessPlayerTargetLevel: Prop<string>;
+  evenChessOpponentTargetLevel: Prop<string>;
+  evenChessStrictSearch: Prop<boolean>;
+  evenChessConfirmLevelContract: Prop<boolean>;
+  evenChessFriendLevelMode: Prop<string>;
+  evenChessFriendMyLevel: Prop<string>;
+  evenChessFriendOpponentLevel: Prop<string>;
   ratingMin: Prop<number>;
   ratingMax: Prop<number>;
   aiLevel: Prop<number>;
@@ -42,6 +63,8 @@ export default class SetupController {
   variantMenuOpen = toggle(false);
 
   timeControl: TimeControl;
+  private evenChessSearchPollTimer?: number;
+  private evenChessSearchPollToken = 0;
 
   constructor(ctrl: LobbyController) {
     this.root = ctrl;
@@ -54,7 +77,7 @@ export default class SetupController {
     };
   }
 
-  // Namespace the store by username for user specific modal settings
+  // Namespace the store by username for user specific modal settings.
   private readonly storeKey = (gameType: GameType) =>
     `lobby.setup.${this.root.me?.username || 'anon'}.${gameType}`;
 
@@ -67,6 +90,16 @@ export default class SetupController {
       increment: 3,
       days: 2,
       gameMode: gameType === 'ai' || !this.root.me ? 'casual' : 'rated',
+      evenChessSetLevel: evenChessSetLevelForGameType(gameType, undefined),
+      evenChessTargetLevel: '',
+      evenChessApplyPreferences: false,
+      evenChessPlayerTargetLevel: '',
+      evenChessOpponentTargetLevel: '',
+      evenChessStrictSearch: false,
+      evenChessConfirmLevelContract: false,
+      evenChessFriendLevelMode: 'auto',
+      evenChessFriendMyLevel: '',
+      evenChessFriendOpponentLevel: '',
       ratingMin: -500,
       ratingMax: 500,
       aiLevel: 1,
@@ -88,6 +121,23 @@ export default class SetupController {
       this.root.pools,
     );
     this.gameMode = this.propWithApply(forceOptions?.mode ?? storeProps.gameMode);
+    this.evenChessSetLevel = this.propWithApply(
+      evenChessSetLevelForGameType(this.gameType, storeProps.evenChessSetLevel),
+    );
+    const legacyTargetLevel = storeProps.evenChessTargetLevel ?? '';
+    this.evenChessApplyPreferences = this.propWithApply(storeProps.evenChessApplyPreferences ?? false);
+    this.evenChessPlayerTargetLevel = this.propWithApply(
+      storeProps.evenChessPlayerTargetLevel ?? legacyTargetLevel,
+    );
+    this.evenChessTargetLevel = this.evenChessPlayerTargetLevel;
+    this.evenChessOpponentTargetLevel = this.propWithApply(storeProps.evenChessOpponentTargetLevel ?? '');
+    this.evenChessStrictSearch = this.propWithApply(storeProps.evenChessStrictSearch ?? false);
+    this.evenChessConfirmLevelContract = this.propWithApply(
+      storeProps.evenChessConfirmLevelContract ?? false,
+    );
+    this.evenChessFriendLevelMode = this.propWithApply(storeProps.evenChessFriendLevelMode ?? 'auto');
+    this.evenChessFriendMyLevel = this.propWithApply(storeProps.evenChessFriendMyLevel ?? '');
+    this.evenChessFriendOpponentLevel = this.propWithApply(storeProps.evenChessFriendOpponentLevel ?? '');
     this.ratingMin = this.propWithApply(storeProps.ratingMin);
     this.ratingMax = this.propWithApply(storeProps.ratingMax);
     this.aiLevel = this.propWithApply(storeProps.aiLevel);
@@ -110,6 +160,8 @@ export default class SetupController {
       this.gameMode = this.propWithApply('casual');
     }
 
+    if (this.gameType === 'ai') this.evenChessSetLevel = this.propWithApply(evenChessComputerSetLevel);
+
     this.ratingMin = this.propWithApply(Math.min(0, this.ratingMin()));
     this.ratingMax = this.propWithApply(Math.max(0, this.ratingMax()));
     if (this.ratingMin() === 0 && this.ratingMax() === 0) {
@@ -127,6 +179,16 @@ export default class SetupController {
       increment: this.timeControl.increment(),
       days: this.timeControl.days(),
       gameMode: this.gameMode(),
+      evenChessSetLevel: evenChessSetLevelForGameType(this.gameType, this.evenChessSetLevel()),
+      evenChessTargetLevel: this.evenChessPlayerTargetLevel(),
+      evenChessApplyPreferences: this.evenChessApplyPreferences(),
+      evenChessPlayerTargetLevel: this.evenChessPlayerTargetLevel(),
+      evenChessOpponentTargetLevel: this.evenChessOpponentTargetLevel(),
+      evenChessStrictSearch: this.evenChessStrictSearch(),
+      evenChessConfirmLevelContract: this.evenChessConfirmLevelContract(),
+      evenChessFriendLevelMode: this.evenChessFriendLevelMode(),
+      evenChessFriendMyLevel: this.evenChessFriendMyLevel(),
+      evenChessFriendOpponentLevel: this.evenChessFriendOpponentLevel(),
       ratingMin: this.ratingMin(),
       ratingMax: this.ratingMax(),
       aiLevel: this.aiLevel(),
@@ -186,6 +248,105 @@ export default class SetupController {
 
   closeModal?: () => void; // managed by view/setup/modal.ts
 
+  stopEvenChessSearchPolling = () => {
+    this.evenChessSearchPollToken++;
+    if (this.evenChessSearchPollTimer) {
+      clearTimeout(this.evenChessSearchPollTimer);
+      this.evenChessSearchPollTimer = undefined;
+    }
+  };
+
+  private readonly openEvenChessSearchRedirect = (status: EvenChessSearchStatus) => {
+    if (status.redirectUrl) {
+      this.stopEvenChessSearchPolling();
+      location.href = status.redirectUrl;
+      return true;
+    }
+    return false;
+  };
+
+  private readonly startEvenChessSearchPolling = (status: EvenChessSearchStatus) => {
+    this.stopEvenChessSearchPolling();
+    if (!status.ok || !status.searchKey) {
+      this.openEvenChessSearchRedirect(status);
+      return;
+    }
+    if (this.openEvenChessSearchRedirect(status)) return;
+
+    const token = this.evenChessSearchPollToken;
+    const pollUrl = status.pollUrl || `/evenchess/play/search.json?searchKey=${encodeURIComponent(status.searchKey)}`;
+    const poll = async () => {
+      if (token !== this.evenChessSearchPollToken) return;
+      try {
+        const nextStatus: EvenChessSearchStatus = await xhr.json(pollUrl);
+        if (token !== this.evenChessSearchPollToken) return;
+        this.root.evenChessSearchStatus = nextStatus;
+        this.root.redraw();
+        if (this.openEvenChessSearchRedirect(nextStatus)) return;
+        if (nextStatus.ok && nextStatus.searchKey) {
+          this.evenChessSearchPollTimer = window.setTimeout(poll, 2000);
+        }
+      } catch (_) {
+        if (evenChessSearchStatusDebugEnabled()) console.warn('EvenChess search poll failed; retrying.');
+        if (token === this.evenChessSearchPollToken) this.evenChessSearchPollTimer = window.setTimeout(poll, 3000);
+      }
+    };
+
+    void poll();
+  };
+
+  private readonly showEvenChessPendingPool = (color: ColorChoice) => {
+    const poolMember = this.hookToPoolMember(color);
+    if (!poolMember) return false;
+    this.root.leavePool();
+    this.root.evenChessPoolMember = poolMember;
+    this.root.setTab('pools');
+    return true;
+  };
+
+  startEvenChessQuickPoolSearch = async (poolId: string) => {
+    this.stopEvenChessSearchPolling();
+    const storeProps = this.store.hook();
+    const preferredSetLevel = evenChessPreferredSetLevelParam(
+      storeProps.evenChessPlayerTargetLevel || storeProps.evenChessTargetLevel,
+    );
+    const params = new URLSearchParams({
+      mode: evenChessSubmitMode('hook', storeProps.gameMode),
+      timeControl: evenChessTimeControlKeyForPoolId(poolId),
+      setLevel: evenChessSetLevelForGameType('hook', storeProps.evenChessSetLevel).toString(),
+      outsideHelp: 'acknowledged',
+    });
+    const clockParams = evenChessClockParamsForPoolId(poolId);
+    if (clockParams) {
+      params.set('clockLimitSeconds', clockParams.clockLimitSeconds);
+      params.set('clockIncrementSeconds', clockParams.clockIncrementSeconds);
+    }
+    if (preferredSetLevel) params.set('preferredSetLevel', preferredSetLevel);
+    if (storeProps.evenChessConfirmLevelContract) params.set('confirmLevelContract', 'true');
+
+    this.root.leavePool();
+    this.root.evenChessPoolMember = { id: poolId };
+    this.root.setTab('pools');
+    this.root.redraw();
+
+    try {
+      const status: EvenChessSearchStatus = await xhr.json(`/evenchess/play/search.json?${params.toString()}`);
+      this.root.evenChessSearchStatus = status;
+      if (!status.ok) {
+        this.root.evenChessPoolMember = undefined;
+        this.root.redraw();
+        await alert(status.error || 'EvenChess search could not start.');
+        return;
+      }
+      this.root.redraw();
+      if (!this.openEvenChessSearchRedirect(status)) this.startEvenChessSearchPolling(status);
+    } catch (_) {
+      this.root.evenChessPoolMember = undefined;
+      this.root.redraw();
+      await alert('Sorry, we encountered an error while starting your EvenChess search. Please try again.');
+    }
+  };
+
   toggleVariantMenu = () => {
     this.variantMenuOpen.toggle();
     this.root.redraw();
@@ -230,14 +391,16 @@ export default class SetupController {
   };
 
   hookToPoolMember = (color: ColorChoice): PoolMember | null => {
-    const valid =
-      color === 'random' &&
-      this.gameType === 'hook' &&
-      this.variant() === 'standard' &&
-      this.gameMode() === 'rated' &&
-      this.timeControl.isRealTime();
-    const id = this.timeControl.clockStr();
-    return valid && this.root.pools.some(p => p.id === id)
+    const id = evenChessPendingPoolId({
+      gameType: this.gameType,
+      variant: this.variant(),
+      gameMode: this.gameMode(),
+      color,
+      isRealTime: this.timeControl.isRealTime(),
+      clock: this.timeControl.clockStr(),
+      poolIds: this.root.pools.map(pool => pool.id),
+    });
+    return id
       ? {
           id,
           range: this.ratingRange(),
@@ -261,13 +424,58 @@ export default class SetupController {
       ratingRange_range_min: this.ratingMin().toString(),
       ratingRange_range_max: this.ratingMax().toString(),
       level: this.aiLevel().toString(),
+      evenChessFriendLevelMode: this.gameType === 'friend' ? this.evenChessFriendLevelMode() : undefined,
+      evenChessFriendMyLevel: this.gameType === 'friend' ? this.evenChessFriendMyLevel() : undefined,
+      evenChessFriendOpponentLevel:
+        this.gameType === 'friend' ? this.evenChessFriendOpponentLevel() : undefined,
       color,
     });
 
   validFen = () => this.variant() !== 'fromPosition' || (!this.fenError && !!this.fen());
 
   valid = () =>
-    this.validFen() && this.timeControl.valid(this.minimumTimeIfReal()) && this.validConstraints();
+    this.validFen() &&
+    this.timeControl.valid(this.minimumTimeIfReal()) &&
+    this.validEvenChessSettings() &&
+    this.validConstraints();
+
+  validEvenChessSettings = () =>
+    evenChessLevelValid(this.evenChessSetLevel()) &&
+    evenChessLevelValid(this.evenChessPlayerTargetLevel()) &&
+    this.validEvenChessFriendSettings();
+
+  validEvenChessFriendSettings = () => {
+    if (this.gameType !== 'friend') return true;
+    const mode = this.evenChessFriendLevelMode();
+    const myLevelValid = evenChessLevelValid(this.evenChessFriendMyLevel());
+    const opponentLevelValid = evenChessLevelValid(this.evenChessFriendOpponentLevel());
+    switch (mode) {
+      case 'auto':
+        return true;
+      case 'my':
+        return myLevelValid && this.evenChessFriendMyLevel() !== '';
+      case 'opponent':
+        return opponentLevelValid && this.evenChessFriendOpponentLevel() !== '';
+      case 'both':
+        return myLevelValid && opponentLevelValid && this.evenChessFriendMyLevel() !== '' && this.evenChessFriendOpponentLevel() !== '';
+      default:
+        return false;
+    }
+  };
+
+  evenChessModeKey = () => {
+    return evenChessSubmitMode(this.gameType, this.gameMode());
+  };
+
+  evenChessTimeControlKey = () => {
+    if (this.timeControl.mode() === 'correspondence') return 'correspondence';
+    if (this.timeControl.mode() === 'unlimited') return 'casual';
+    const speed = this.timeControl.speed();
+    if (speed === 'bullet') return 'bullet';
+    if (speed === 'blitz') return 'blitz';
+    if (speed === 'classical') return 'classical';
+    return 'rapid';
+  };
 
   private readonly invalid = <A>(forced: A | undefined, current: A) =>
     forced !== undefined && forced !== current;
@@ -294,8 +502,8 @@ export default class SetupController {
 
   minimumTimeIfReal = () => (this.gameType === 'ai' && this.variant() === 'fromPosition' ? 1 : 0);
 
-  submit = async () => {
-    const color = this.color();
+  private readonly submitNativeSetup = async (color: ColorChoice) => {
+    this.stopEvenChessSearchPolling();
     const poolMember = this.hookToPoolMember(color);
     if (poolMember) {
       this.root.enterPool(poolMember);
@@ -309,7 +517,15 @@ export default class SetupController {
 
     let urlPath = `/setup/${this.gameType}`;
     if (this.gameType === 'hook') urlPath += `/${site.sri}`;
-    const urlParams = { user: this.friendUser || undefined };
+    const urlParams = {
+      user: this.friendUser || undefined,
+      evenChessFriendLevelMode:
+        this.gameType === 'friend' ? this.evenChessFriendLevelMode() : undefined,
+      evenChessFriendMyLevel:
+        this.gameType === 'friend' ? this.evenChessFriendMyLevel() : undefined,
+      evenChessFriendOpponentLevel:
+        this.gameType === 'friend' ? this.evenChessFriendOpponentLevel() : undefined,
+    };
     let response;
     try {
       response = await xhr.textRaw(xhr.url(urlPath, urlParams), {
@@ -336,7 +552,7 @@ export default class SetupController {
       );
       if (response.status === 403) {
         // 403 FORBIDDEN closes this modal because challenges to the recipient
-        // will not be accepted.  see friend() in controllers/Setup.scala
+        // will not be accepted. see friend() in controllers/Setup.scala.
         this.closeModal?.();
       }
     } else if (redirected) {
@@ -344,6 +560,59 @@ export default class SetupController {
     } else {
       this.loading = false;
       this.closeModal?.();
+    }
+  };
+
+  submit = async () => {
+    const color = this.color();
+    this.stopEvenChessSearchPolling();
+    if (this.gameType === 'ai') {
+      this.evenChessSetLevel(evenChessComputerSetLevel);
+      this.savePropsToStore({ evenChessSetLevel: evenChessComputerSetLevel });
+      await this.submitNativeSetup(color);
+      return;
+    }
+    if (this.gameType === 'friend') {
+      await this.submitNativeSetup(color);
+      return;
+    }
+
+    const preferredSetLevel = evenChessPreferredSetLevelParam(this.evenChessPlayerTargetLevel());
+    const params = new URLSearchParams({
+      mode: this.evenChessModeKey(),
+      timeControl: this.evenChessTimeControlKey(),
+      setLevel: this.evenChessSetLevel().toString(),
+      outsideHelp: 'acknowledged',
+    });
+    if (this.timeControl.mode() === 'realTime') {
+      params.set('clockLimitSeconds', Math.round(this.timeControl.initialSeconds()).toString());
+      params.set('clockIncrementSeconds', Math.round(this.timeControl.increment()).toString());
+    }
+    if (preferredSetLevel) params.set('preferredSetLevel', preferredSetLevel);
+    if (this.evenChessConfirmLevelContract()) params.set('confirmLevelContract', 'true');
+    const showsPendingPool = this.showEvenChessPendingPool(color);
+    this.loading = true;
+    this.root.redraw();
+
+    try {
+      const status: EvenChessSearchStatus = await xhr.json(`/evenchess/play/search.json?${params.toString()}`);
+      this.root.evenChessSearchStatus = status;
+      this.loading = false;
+      if (!status.ok) {
+        if (showsPendingPool) this.root.evenChessPoolMember = undefined;
+        this.root.redraw();
+        await alert(status.error || 'EvenChess search could not start.');
+        return;
+      }
+      this.closeModal?.();
+      if (!showsPendingPool) this.root.setTab(this.timeControl.isRealTime() ? 'real_time' : 'seeks');
+      this.root.redraw();
+      if (!this.openEvenChessSearchRedirect(status)) this.startEvenChessSearchPolling(status);
+    } catch (_) {
+      this.loading = false;
+      if (showsPendingPool) this.root.evenChessPoolMember = undefined;
+      this.root.redraw();
+      await alert('Sorry, we encountered an error while starting your EvenChess search. Please try again.');
     }
   };
 }

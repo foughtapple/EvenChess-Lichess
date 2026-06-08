@@ -33,6 +33,9 @@ case class Challenge(
     open: Option[Challenge.Open] = None,
     name: Option[String] = None,
     declineReason: Option[Challenge.DeclineReason] = None,
+    evenChessInfo: Option[String] = None,
+    evenChessChallengerLevel: Option[Int] = None,
+    evenChessRecipientLevel: Option[Int] = None,
     rules: Set[GameRule] = Set.empty
 ) extends hub.Challenge:
 
@@ -184,6 +187,9 @@ object Challenge:
       name: Option[String] = None,
       id: Option[GameId] = None,
       openToUserIds: Option[(UserId, UserId)] = None,
+      evenChessInfo: Option[String] = None,
+      evenChessChallengerLevel: Option[Int] = None,
+      evenChessRecipientLevel: Option[Int] = None,
       rules: Set[GameRule] = Set.empty,
       expiresAt: Option[Instant] = None
   ): Challenge =
@@ -219,5 +225,8 @@ object Challenge:
       },
       open = isOpen.option(Open(openToUserIds)),
       name = name,
+      evenChessInfo = evenChessInfo,
+      evenChessChallengerLevel = evenChessChallengerLevel,
+      evenChessRecipientLevel = evenChessRecipientLevel,
       rules = rules
     )

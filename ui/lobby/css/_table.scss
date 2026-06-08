@@ -85,6 +85,52 @@
     }
   }
 
+  &__evenchess-status {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: $border;
+    border-top: 3px solid $c-accent;
+    border-radius: 3px;
+    background: $c-bg-box;
+    color: $c-font;
+  }
+
+  &__evenchess-status__head {
+    @extend %flex-between-nowrap;
+
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  &__evenchess-status__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  &__evenchess-status__item {
+    @extend %flex-column;
+
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border: $border;
+    border-radius: 3px;
+
+    span {
+      color: $c-font-dimmer;
+      font-size: 0.85em;
+    }
+
+    strong {
+      @extend %nowrap-ellipsis;
+    }
+  }
+
+  &__evenchess-status__error {
+    margin: 0;
+    color: $c-bad;
+  }
+
   .lobby__tournaments-simuls {
     .lobby__box__top {
       border-bottom: $border;

@@ -32,6 +32,40 @@ final class JsonView(
   private def checkCount(game: Game, color: Color) =
     (game.variant == chess.variant.ThreeCheck).option(game.history.checkCount(color))
 
+  private def evenChessPrefJson(pref: Pref): JsObject =
+    val config = lila.evenchess.UserSettings.fromTags(pref.tags).clientConfig
+    Json.obj(
+      "defaultSetLevel" -> config.defaultSetLevel,
+      "preferredUsedLevel" -> config.preferredUsedLevel,
+      "defaultFeatureToggles" -> config.defaultFeatureToggles,
+      "ttsEnabled" -> config.ttsEnabled,
+      "ttsAutoSpeak" -> config.ttsAutoSpeak,
+      "ttsAutoDelaySeconds" -> config.ttsAutoDelaySeconds,
+      "ttsVoice" -> config.ttsVoice,
+      "ttsRatePercent" -> config.ttsRatePercent,
+      "ttsVolumePercent" -> config.ttsVolumePercent,
+      "ttsQueueBehavior" -> config.ttsQueueBehavior,
+      "ttsMuteDuringOpponentTurn" -> config.ttsMuteDuringOpponentTurn
+    )
+
+  private def evenChessRoundJson(game: Game, player: GamePlayer, pref: Pref): Option[JsObject] =
+    for
+      userId <- player.userId
+      stored <- lila.evenchess.GamePolicy.Runtime.gamePolicyRepository.get(game.id.value)
+      setLevel <- stored.record.setLevelFor(userId.value)
+    yield
+      val preferredUsedLevel =
+        lila.evenchess.UserSettings
+          .fromTags(pref.tags)
+          .startingUsedLevelFor(setLevel.value)
+      Json.obj(
+        "display" -> Json.obj(
+          "setLevel" -> setLevel.value,
+          "preferredUsedLevel" -> preferredUsedLevel,
+          "usedLevel" -> preferredUsedLevel
+        )
+      )
+
   private def commonPlayerJson(
       g: Game,
       p: GamePlayer,
@@ -95,7 +129,7 @@ final class JsonView(
             "round" -> s"/$fullId"
           )
         ,
-        "pref" ->
+        "pref" -> (
           Json
             .obj(
               "animationDuration" -> animationMillis(pov, pref),
@@ -119,7 +153,10 @@ final class JsonView(
             .add("enablePremove" -> pref.premove)
             .add("showCaptured" -> pref.captured)
             .add("submitMove" -> submitMovePref(pref, game, flags.nvui))
+            + ("evenchess" -> evenChessPrefJson(pref))
+        )
       )
+      .add("evenchess" -> evenChessRoundJson(game, player, pref))
       .add("clock" -> game.clock.map(clockJson))
       .add("correspondence" -> game.correspondenceClock)
       .add("takebackable" -> takebackable)
@@ -212,7 +249,9 @@ final class JsonView(
               .add("destination" -> pref.destination)
               .add("rookCastle" -> (pref.rookCastle == Pref.RookCastle.YES))
               .add("showCaptured" -> pref.captured)
+              + ("evenchess" -> evenChessPrefJson(pref))
         )
+        .add("evenchess" -> pref.flatMap(evenChessRoundJson(game, player, _)))
         .add("tv" -> tv.collect { case OnTv.Lichess(channel, flip) =>
           Json.obj("channel" -> channel, "flip" -> flip)
         })
@@ -254,7 +293,8 @@ final class JsonView(
           "ai" -> opponent.aiLevel
         ),
         "orientation" -> orientation.name,
-        "pref" -> Json
+        "pref" -> (
+          Json
           .obj(
             "animationDuration" -> animationMillis(pov, pref),
             "coords" -> pref.coords,
@@ -265,7 +305,9 @@ final class JsonView(
           .add("rookCastle" -> (pref.rookCastle == Pref.RookCastle.YES))
           .add("is3d" -> pref.is3d)
           .add("highlight" -> pref.highlight)
-          .add("destination" -> pref.destination),
+          .add("destination" -> pref.destination)
+          + ("evenchess" -> evenChessPrefJson(pref))
+        ),
         "userAnalysis" -> true
       )
 

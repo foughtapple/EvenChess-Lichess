@@ -56,6 +56,7 @@ function challenge(ctrl: ChallengeCtrl, dir: ChallengeDirection) {
                 ' • ',
               ),
             ]),
+            c.evenChessInfo ? h('span.desc.evenchess-info', c.evenChessInfo) : null,
           ]),
           iconCls(c.perf.icon, 'perf'),
         ]),

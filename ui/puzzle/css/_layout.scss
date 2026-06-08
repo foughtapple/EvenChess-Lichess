@@ -98,7 +98,7 @@ $puzzle-block-gap: $block-gap;
   &__side {
     display: grid;
     gap: $puzzle-block-gap;
-    grid-template-areas: 'user' 'theme' 'metas' 'config';
+    grid-template-areas: 'metas' 'levels' 'user' 'theme' 'config';
 
     .puzzle-replay & {
       grid-template-areas: 'replay' 'user' 'theme' 'metas' 'config';
@@ -106,28 +106,32 @@ $puzzle-block-gap: $block-gap;
 
     @media (min-width: at-least($xx-small)) {
       grid-template-columns: 1fr 1fr;
-      grid-template-areas: 'metas user' 'metas theme' 'config theme' '. theme';
+      grid-template-areas: 'metas user' 'levels theme' 'config theme' '. theme';
       grid-template-rows: min-content min-content min-content;
 
       .puzzle-replay & {
-        grid-template-areas: 'metas replay' 'metas user' 'config user' 'config theme';
+        grid-template-areas: 'metas replay' 'levels user' 'config user' 'config theme';
       }
     }
 
     @media (min-width: at-least($x-large)) {
       grid-template-columns: 1fr;
-      grid-template-areas: 'metas' 'user' 'theme' 'config';
+      grid-template-areas: 'metas' 'levels' 'user' 'theme' 'config';
       grid-template-rows: min-content min-content min-content;
       min-width: 250px;
       max-width: 350px;
 
       .puzzle-replay & {
-        grid-template-areas: 'metas' 'replay' 'user' 'theme' 'config';
+        grid-template-areas: 'metas' 'replay' 'levels' 'user' 'theme' 'config';
       }
     }
 
     &__metas {
       grid-area: metas;
+    }
+
+    .evenchess-puzzle-levels {
+      grid-area: levels;
     }
 
     &__user {

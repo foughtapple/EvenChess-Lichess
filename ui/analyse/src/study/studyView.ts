@@ -12,6 +12,7 @@ import { watchers } from 'lib/view/watchers';
 
 import { viewContext, renderBoard, renderMain, renderUnderboard } from '@/view/components';
 import { renderControls } from '@/view/controls';
+import { renderEvenChessLearning } from '@/view/evenchessLearning';
 import { renderTools } from '@/view/tools';
 import { wikiToggleBox } from '@/wiki';
 
@@ -69,7 +70,7 @@ export function studyView(ctrl: AnalyseCtrl, study: StudyCtrl, deps: typeof stud
               }
             }),
           },
-          deps?.studyView.studySideNodes(study, true),
+          [renderEvenChessLearning(ctrl, 'study'), deps.studyView.studySideNodes(study, true)],
         ),
   );
 }
